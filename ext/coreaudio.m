@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <pthread.h>
+
 #include <Foundation/Foundation.h>
 #include <CoreAudio/CoreAudio.h>
 
@@ -10,6 +12,8 @@ static VALUE rb_mCoreAudio;
 static VALUE rb_cAudioDevice;
 static VALUE rb_cAudioStream;
 static VALUE rb_cOutLoop;
+static VALUE rb_cOutputBuffer;
+static VALUE rb_cInputBuffer;
 static ID sym_iv_devid;
 static ID sym_iv_name;
 static ID sym_iv_available_sample_rate;
@@ -25,6 +29,7 @@ static ID sym_iv_buffer_frame_size;
   .mElement = kAudioObjectPropertyElementMaster \
 }
 
+/*--- CoreAudio::AudioStream ---*/
 static VALUE
 ca_get_stream_channel_num(AudioDeviceID devID,
                           AudioObjectPropertyScope scope)
@@ -117,6 +122,7 @@ ca_stream_new(VALUE devid, VALUE is_input)
     return stream;
 }
 
+/*--- CoreAudio::AudioDevice ---*/
 static VALUE
 ca_get_device_name(AudioDeviceID devID)
 {
@@ -261,6 +267,13 @@ ca_device_new(AudioDeviceID devid)
     return device;
 }
 
+/*
+ * Document-method: CoreAudio.devices
+ * call-seq:
+ *   CoreAudio.devices
+ *
+ * Get available all audio devices (CoreAudio::AudioDevice object).
+ */
 static VALUE
 ca_devices(VALUE mod)
 {
@@ -293,6 +306,13 @@ ca_devices(VALUE mod)
     return ary;
 }
 
+/*
+ * Document-method: CoreAudio.default_input_device
+ * call-seq:
+ *   CoreAudio.default_input_device
+ *
+ * Get system default audio input device as CoreAudio::AudioDevice object.
+ */
 static VALUE
 ca_default_input_device(VALUE mod)
 {
@@ -313,6 +333,14 @@ ca_default_input_device(VALUE mod)
     return ca_device_new(devID);
 }
 
+
+/*
+ * Document-method: CoreAudio.default_output_device
+ * call-seq:
+ *   CoreAudio.default_output_device
+ *
+ * Get system default audio output device as CoreAudio::AudioDevice object.
+ */
 static VALUE
 ca_default_output_device(VALUE mod)
 {
@@ -333,6 +361,11 @@ ca_default_output_device(VALUE mod)
     return ca_device_new(devID);
 }
 
+/*
+ * Document-class: CoreAudio::OutLoop
+ *
+ * CoreAudio::OutLoop is an class for loop waveform to output audio stream.
+ */
 typedef struct {
   AudioDeviceID       devID;
   AudioDeviceIOProcID procID;
@@ -358,7 +391,7 @@ static size_t
 ca_out_loop_data_memsize(const void *ptr)
 {
     const ca_out_loop_data *data = ptr;
-    return sizeof(ca_out_loop_data) + data->frame * sizeof(float);
+    return sizeof(ca_out_loop_data) + data->channel * data->frame * sizeof(float);
 }
 
 static const rb_data_type_t ca_out_loop_data_type = {
@@ -435,6 +468,17 @@ ca_out_loop_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel)
     return self;
 }
 
+/*
+ * Document-method: CoreAudio::AudioDevice#out_loop
+ * call-seq:
+ *   device.out_loop(frame)
+ *
+ * Create output audio loop buffer.
+ *
+ * == Parameters
+ * * +frame+ is an integer value indicate loop buffer size in number of
+ *   sample/frame. The number of channel is considered automatically.
+ */
 static VALUE
 ca_device_create_out_loop_proc(VALUE self, VALUE frame)
 {
@@ -447,6 +491,12 @@ ca_device_create_out_loop_proc(VALUE self, VALUE frame)
     return proc;
 }
 
+/*
+ * call-seq:
+ *   outloop.start
+ *
+ * Start play of output audio loop.
+ */
 static VALUE
 ca_out_loop_data_start(VALUE self)
 {
@@ -463,6 +513,12 @@ ca_out_loop_data_start(VALUE self)
     return self;
 }
 
+/*
+ * call-seq:
+ *   outloop.stop
+ *
+ * Stop play of output audio loop.
+ */
 static VALUE
 ca_out_loop_data_stop(VALUE self)
 {
@@ -479,59 +535,424 @@ ca_out_loop_data_stop(VALUE self)
     return self;
 }
 
+/*
+ * call-seq:
+ *   outloop[frame] = sample
+ *   outloop[frame] = [sample1, sample2]
+ *
+ * Assign audio loop buffer frame value.
+ * If assigned value is an Float, the value is stored to all channel.
+ * The +sample+ should be normalize to -1.0 <= sample <= 1.0 range.
+ * If assigned value is an Array of Float, each value is stored to each
+ * correponding channel. If size of array is not equal to the AudioDevice's
+ * output stream channel number, raise ArgumentError.
+ */
 static VALUE
 ca_out_loop_data_assign(VALUE self, VALUE index, VALUE val)
 {
     ca_out_loop_data *data;
+    size_t idx;
+    UInt32 i;
 
     TypedData_Get_Struct(self, ca_out_loop_data, &ca_out_loop_data_type, data);
 
-    data->buf[NUM2UINT(index)] = (float)NUM2DBL(val);
+    idx = NUM2UINT(index) % data->frame;
+    if (TYPE(val) == T_ARRAY) {
+      if (RARRAY_LEN(val) != data->channel) {
+        rb_raise(rb_eArgError, "size of array and channel size mismatch");
+      }
+      for (i = 0; i < data->channel; i++) {
+        data->buf[idx*data->channel+i] = (float)NUM2DBL(RARRAY_PTR(val)[i]);
+      }
+    } else {
+      for (i = 0; i < data->channel; i++) {
+        data->buf[idx*data->channel+i] = (float)NUM2DBL(val);
+      }
+    }
+    return val;
 }
 
-#if 0
-static VALUE
-ca_test_callback(VALUE self)
+typedef struct {
+  AudioDeviceID       devID;
+  AudioDeviceIOProcID procID;
+  UInt32              frame;
+  UInt32              channel;
+  float               *buf;
+  UInt32              start;
+  UInt32              end;
+  pthread_mutex_t     mutex;
+  pthread_cond_t      cond;
+} ca_buffer_data;
+
+
+static void
+ca_buffer_data_free(void *ptr)
 {
-    AudioDeviceID devID;
-    AudioDeviceIOProcID procID;
-    OSStatus status;
-    ca_out_loop_data data;
-
-    devID = NUM2UINT(rb_ivar_get(self, sym_iv_devid));
-
-    status = AudioDeviceCreateIOProcID(devID, ca_io_proc, NULL, &procID);
-    if ( status != noErr )
-    {
-      rb_raise(rb_eRuntimeError, "coreaudio: create proc ID fail: %d", status);
+    if (ptr) {
+      ca_buffer_data *data = ptr;
+      if (data->procID)
+        AudioDeviceDestroyIOProcID(data->devID, data->procID);
+      pthread_cond_destroy(&data->cond);
+      pthread_mutex_destroy(&data->mutex);
+      if (data->buf)
+        free(data->buf);
+      free(ptr);
     }
+}
 
-    status = AudioDeviceStart(devID, procID);
+static size_t
+ca_buffer_data_memsize(const void *ptr)
+{
+    const ca_buffer_data *data = ptr;
+    return sizeof(ca_buffer_data) + data->channel * data->frame * sizeof(float);
+}
+
+static const rb_data_type_t ca_buffer_data_type = {
+  "ca_buffer_data",
+  {NULL, ca_buffer_data_free, ca_buffer_data_memsize},
+};
+
+static VALUE
+ca_buffer_data_alloc(VALUE klass)
+{
+    VALUE obj;
+    ca_buffer_data *ptr;
+
+    obj = TypedData_Make_Struct(klass, ca_buffer_data, &ca_buffer_data_type, ptr);
+    pthread_mutex_init(&ptr->mutex, NULL);
+    pthread_cond_init(&ptr->cond, NULL);
+    return obj;
+}
+
+static VALUE
+ca_buffer_data_start(VALUE self)
+{
+    ca_buffer_data *data;
+    OSStatus status;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+
+    status = AudioDeviceStart(data->devID, data->procID);
     if ( status != noErr )
     {
       rb_raise(rb_eRuntimeError, "coreaudio: audio device start fail: %d", status);
     }
+    return self;
+}
 
-    sleep(5);
+static VALUE
+ca_buffer_data_stop(VALUE self)
+{
+    ca_buffer_data *data;
+    OSStatus status;
 
-    status = AudioDeviceStop(devID, procID);
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+
+    status = AudioDeviceStop(data->devID, data->procID);
     if ( status != noErr )
     {
       rb_raise(rb_eRuntimeError, "coreaudio: audio device stop fail: %d", status);
     }
-
-    status = AudioDeviceDestroyIOProcID(devID, procID);
-    if ( status != noErr )
-    {
-      rb_raise(rb_eRuntimeError, "coreaudio: destroy IOProc fail: %d", status);
-    }
-
     return self;
+}
+
+static VALUE
+ca_buffer_wait(void *ptr)
+{
+    ca_buffer_data *data = ptr;
+    int ret;
+
+    ret = pthread_cond_wait(&data->cond, &data->mutex);
+
+    return (VALUE)ret;
+}
+
+#if 0
+/* use pthread_mutex_lock in unblocking function cause deadlock.
+ * because calling thread have GVL lock and interrupted thread could
+ * be waiting mutex lock for GVL.
+ * So use RUBY_UBF_IO for unblocking function.
+ * Although pthread_cond_wait() shouldn't return EINTR acoording to POSIX,
+ * on Mac OS X pthread_cond_wait() actually returns when received signals. */
+static void
+ca_buffer_unblocking_func(void *ptr)
+{
+    ca_buffer_data *data = ptr;
+
+    pthread_mutex_lock(&data->mutex);
+    pthread_cond_broadcast(&data->cond);
+    pthread_mutex_unlock(&data->mutex);
 }
 #endif
 
+static VALUE
+ca_buffer_wait_blocking(VALUE value)
+{
+    void *ptr = (void *)value;
+#if 0
+    return rb_thread_blocking_region(ca_buffer_wait, ptr,
+                                     ca_buffer_unblocking_func, ptr);
+#endif
+    return rb_thread_blocking_region(ca_buffer_wait, ptr,
+                                     RUBY_UBF_IO, NULL);
+}
+
+/*
+ * Document-class: CoreAudio::OutputBuffer
+ *
+ * CoreAudio::OutputBuffer is a class for stream waveform to output audio stream.
+ */
+static OSStatus
+ca_out_buffer_proc(
+        AudioDeviceID           inDevice,
+        const AudioTimeStamp*   inNow,
+        const AudioBufferList*  inInputData,
+        const AudioTimeStamp*   inInputTime,
+        AudioBufferList*        outOutputData,
+        const AudioTimeStamp*   inOutputTime,
+        void*                   inClientData)
+{
+    NSUInteger n_buf;
+    UInt32 buffers = outOutputData->mNumberBuffers;
+    ca_buffer_data *buffer_data = inClientData;
+    UInt32 channel = buffer_data->channel;
+
+    for (n_buf = 0; n_buf < buffers; n_buf++) {
+      float *ptr = outOutputData->mBuffers[n_buf].mData;
+      UInt32 size = outOutputData->mBuffers[n_buf].mDataByteSize / (UInt32)sizeof(float) / channel;
+      UInt32 copied = 0;
+      UInt32 i;
+
+      if (outOutputData->mBuffers[n_buf].mNumberChannels != channel) {
+        memset(ptr, 0, size * sizeof(float));
+        continue;
+      }
+
+      pthread_mutex_lock(&buffer_data->mutex);
+      for ( copied = 0, i = buffer_data->start; copied < size && i != buffer_data->end; copied++, i = (i+1) % buffer_data->frame ) {
+        memcpy(ptr+(copied*channel), buffer_data->buf + (i*channel), sizeof(float)*channel);
+      }
+      buffer_data->start = i;
+      pthread_cond_broadcast(&buffer_data->cond);
+      pthread_mutex_unlock(&buffer_data->mutex);
+      if ( copied < size )
+        memset(ptr+(copied*channel), 0, sizeof(float)*channel*(size-copied));
+    }
+
+    return 0;
+}
+
+static VALUE
+ca_out_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel)
+{
+    ca_buffer_data *data;
+    OSStatus status;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+    data->devID = NUM2UINT(devID);
+    status = AudioDeviceCreateIOProcID(data->devID, ca_out_buffer_proc, data, &data->procID);
+    if ( status != noErr )
+    {
+      rb_raise(rb_eRuntimeError, "coreaudio: create proc ID fail: %d", status);
+    }
+    data->frame = NUM2UINT(frame);
+    data->channel = NUM2UINT(channel);
+    data->buf = malloc(sizeof(float)*data->frame*data->channel);
+    if (data->buf == NULL)
+      rb_raise(rb_eNoMemError, "coreaudio: fail to alloc out buffer data buffer");
+    return self;
+}
+
+static VALUE
+ca_device_create_out_buffer_proc(VALUE self, VALUE frame)
+{
+    VALUE proc;
+    VALUE out_stream = rb_ivar_get(self, sym_iv_output_stream);
+
+    proc = ca_buffer_data_alloc(rb_cOutputBuffer);
+    ca_out_buffer_data_initialize(proc, rb_ivar_get(self, sym_iv_devid), frame,
+                                  rb_ivar_get(out_stream, sym_iv_channels));
+    return proc;
+}
+
+static VALUE
+ca_out_buffer_data_append(VALUE self, VALUE ary)
+{
+    ca_buffer_data *data;
+    UInt32 idx;
+    VALUE val;
+    long i;
+    UInt32 j;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+
+    pthread_mutex_lock(&data->mutex);
+    idx = data->end;
+    for ( i = 0; i < RARRAY_LEN(ary); i++, idx = (idx+1)%data->frame) {
+      while ( (idx+1) % data->frame == data->start ) {
+        int ret, state;
+        data->end = idx;
+        ret = (int)rb_protect(ca_buffer_wait_blocking, (VALUE)data, &state);
+        if (state) {
+          pthread_mutex_unlock(&data->mutex);
+          rb_jump_tag(state);
+        }
+        switch(ret) {
+          case 0:
+          case EINTR:
+          case EAGAIN:
+            break;
+          default:
+            pthread_mutex_unlock(&data->mutex);
+            rb_sys_fail("pthread_cond_wait");
+            break;
+        }
+      }
+      val = RARRAY_PTR(ary)[i];
+
+      if (TYPE(val) == T_ARRAY) {
+        if (RARRAY_LEN(val) != data->channel) {
+          pthread_mutex_unlock(&data->mutex);
+          rb_raise(rb_eArgError, "size of array and channel size mismatch");
+        }
+        for (j = 0; j < data->channel; j++) {
+          data->buf[idx*data->channel+j] = (float)NUM2DBL(RARRAY_PTR(val)[j]);
+        }
+      } else {
+        for (j = 0; j < data->channel; j++) {
+          data->buf[idx*data->channel+j] = (float)NUM2DBL(val);
+        }
+      }
+      data->end = idx;
+    }
+    pthread_mutex_unlock(&data->mutex);
+    return self;
+}
+
+/*
+ * Document-class: CoreAudio::InputBuffer
+ *
+ * CoreAudio::InputBuffer is a class for stream waveform to input audio stream.
+ */
+static OSStatus
+ca_in_buffer_proc(
+        AudioDeviceID           inDevice,
+        const AudioTimeStamp*   inNow,
+        const AudioBufferList*  inInputData,
+        const AudioTimeStamp*   inInputTime,
+        AudioBufferList*        outOutputData,
+        const AudioTimeStamp*   inOutputTime,
+        void*                   inClientData)
+{
+    NSUInteger n_buf;
+    UInt32 buffers = inInputData->mNumberBuffers;
+    ca_buffer_data *buffer_data = inClientData;
+    UInt32 channel = buffer_data->channel;
+
+    for (n_buf = 0; n_buf < buffers; n_buf++) {
+      float *ptr = inInputData->mBuffers[n_buf].mData;
+      UInt32 size = inInputData->mBuffers[n_buf].mDataByteSize / (UInt32)sizeof(float) / channel;
+      UInt32 copied, idx;
+
+      if (inInputData->mBuffers[n_buf].mNumberChannels != channel) {
+        continue;
+      }
+
+      pthread_mutex_lock(&buffer_data->mutex);
+
+      copied = 0;
+      for (idx = buffer_data->end;
+           copied < size && (idx+1) % buffer_data->frame != buffer_data->start;
+           copied++, idx = (idx+1) % buffer_data->frame) {
+        memcpy(buffer_data->buf + idx * buffer_data->channel,
+               ptr + copied * buffer_data->channel,
+               buffer_data->channel * sizeof(float));
+      }
+      buffer_data->end = idx;
+
+      pthread_cond_broadcast(&buffer_data->cond);
+      pthread_mutex_unlock(&buffer_data->mutex);
+    }
+
+    return 0;
+}
+
+static VALUE
+ca_in_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel)
+{
+    ca_buffer_data *data;
+    OSStatus status;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+    data->devID = NUM2UINT(devID);
+    status = AudioDeviceCreateIOProcID(data->devID, ca_in_buffer_proc, data, &data->procID);
+    if ( status != noErr )
+    {
+      rb_raise(rb_eRuntimeError, "coreaudio: create proc ID fail: %d", status);
+    }
+    data->frame = NUM2UINT(frame);
+    data->channel = NUM2UINT(channel);
+    data->buf = malloc(sizeof(float)*data->frame*data->channel);
+    if (data->buf == NULL)
+      rb_raise(rb_eNoMemError, "coreaudio: fail to alloc input buffer data buffer");
+    return self;
+}
+
+static VALUE
+ca_device_create_in_buffer_proc(VALUE self, VALUE frame)
+{
+    VALUE proc;
+    VALUE in_stream = rb_ivar_get(self, sym_iv_input_stream);
+
+    proc = ca_buffer_data_alloc(rb_cInputBuffer);
+    ca_in_buffer_data_initialize(proc, rb_ivar_get(self, sym_iv_devid), frame,
+                                 rb_ivar_get(in_stream, sym_iv_channels));
+    return proc;
+}
+
+static VALUE
+ca_in_buffer_data_read(VALUE self, VALUE num)
+{
+    ca_buffer_data *data;
+    UInt32 frame = NUM2UINT(num);
+    VALUE val;
+    UInt32 i;
+    UInt32 j;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+
+    val = rb_ary_new2(frame * data->channel);
+
+    pthread_mutex_lock(&data->mutex);
+    for ( i = 0; i < frame; i++, data->start = (data->start+1)%data->frame) {
+      while (data->start == data->end) {
+        int ret, state;
+        ret = (int)rb_protect(ca_buffer_wait_blocking, (VALUE)data, &state);
+        if (state) {
+          pthread_mutex_unlock(&data->mutex);
+          rb_jump_tag(state);
+        }
+        switch(ret) {
+          case 0:
+          case EINTR:
+          case EAGAIN:
+            break;
+          default:
+            pthread_mutex_unlock(&data->mutex);
+            rb_sys_fail("pthread_cond_wait");
+            break;
+        }
+      }
+      for ( j = 0; j < data->channel; j++ ) {
+        rb_ary_push(val, DBL2NUM((double)data->buf[data->start*data->channel+j]));
+      }
+    }
+    pthread_mutex_unlock(&data->mutex);
+    return val;
+}
+
 void
-Init_coreaudio(void)
+Init_coreaudio_ext(void)
 {
     sym_iv_devid = rb_intern("@devid");
     sym_iv_name = rb_intern("@name");
@@ -546,10 +967,14 @@ Init_coreaudio(void)
     rb_cAudioDevice = rb_define_class_under(rb_mCoreAudio, "AudioDevice", rb_cObject);
     rb_cAudioStream = rb_define_class_under(rb_mCoreAudio, "AudioStream", rb_cObject);
     rb_cOutLoop = rb_define_class_under(rb_mCoreAudio, "OutLoop", rb_cObject);
+    rb_cOutputBuffer = rb_define_class_under(rb_mCoreAudio, "OutputBuffer", rb_cObject);
+    rb_cInputBuffer = rb_define_class_under(rb_mCoreAudio, "InputBuffer", rb_cObject);
 
     rb_define_method(rb_cAudioDevice, "initialize", ca_device_initialize, 1);
     rb_define_method(rb_cAudioDevice, "actual_rate", ca_get_device_actual_sample_rate, 0);
-    rb_define_method(rb_cAudioDevice, "out_loop", ca_device_create_out_loop_proc, 1);
+    rb_define_method(rb_cAudioDevice, "output_loop", ca_device_create_out_loop_proc, 1);
+    rb_define_method(rb_cAudioDevice, "output_buffer", ca_device_create_out_buffer_proc, 1);
+    rb_define_method(rb_cAudioDevice, "input_buffer", ca_device_create_in_buffer_proc, 1);
     rb_define_attr(rb_cAudioDevice, "devid", 1, 0);
     rb_define_attr(rb_cAudioDevice, "name", 1, 0);
     rb_define_attr(rb_cAudioDevice, "available_sample_rate", 1, 0);
@@ -566,4 +991,12 @@ Init_coreaudio(void)
     rb_define_method(rb_cOutLoop, "[]=", ca_out_loop_data_assign, 2);
     rb_define_method(rb_cOutLoop, "start", ca_out_loop_data_start, 0);
     rb_define_method(rb_cOutLoop, "stop", ca_out_loop_data_stop, 0);
+
+    rb_define_method(rb_cOutputBuffer, "start", ca_buffer_data_start, 0);
+    rb_define_method(rb_cOutputBuffer, "stop", ca_buffer_data_stop, 0);
+    rb_define_method(rb_cOutputBuffer, "<<", ca_out_buffer_data_append, 1);
+
+    rb_define_method(rb_cInputBuffer, "start", ca_buffer_data_start, 0);
+    rb_define_method(rb_cInputBuffer, "stop", ca_buffer_data_stop, 0);
+    rb_define_method(rb_cInputBuffer, "read", ca_in_buffer_data_read, 1);
 }

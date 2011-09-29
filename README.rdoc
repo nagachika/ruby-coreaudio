@@ -3,9 +3,17 @@
 CoreAudio (Audio Framework of Mac OS X) wrapper library for ruby 1.9
 
 == Features
+* HAL (Hardware Abstraction Layer) wrapper
 * Detect audio devices
 * Get/Set device properties (numbers of channels, sample rate, frame size...)
-* Output audio data
+* Output audio data (Loop buffer, Stream buffer)
+* Input audio data (Stream buffer)
+
+== ToDo
+* Detect data drop in Stream Buffer
+* Switch input/output audio sample type (signed 16bit integer, Float)
+* Audio file access (wrapper for ExtAudioFile)
+* Wrapper for AudioUnit/AudioGraph
 
 == Contributing to coreaudio
 
