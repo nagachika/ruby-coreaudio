@@ -84,6 +84,15 @@ module CoreAudio
     #                                      ExtAudioFileRef outExtAudioFile)
     extern "int ExtAudioFileWrapAudioFileID(void *, char, void *)"
 
+    # OSStatus
+    # ExtAudioFileCreateNew(const struct FSRef *inParentDir,
+    #                       CFStringRef inFileName,
+    #                       AudioFileTypeID inFileType,
+    #                       const AudioStreamBasicDescription * inStreamDesc,
+    #                       const AudioChannelLayout * inChannelLayout,
+    #                       ExtAudioFileRef *outExtAudioFile)
+    extern "int ExtAudioFileCreateNew(void *, void *, int, void *, void *, void *)"
+
     # OSStatus ExtAudioFileDispose(ExtAudioFileRef inExtAudioFile)
     extern "int ExtAudioFileDispose(void *)"
 
@@ -160,16 +169,11 @@ module CoreAudio
       File.unlink(path) rescue nil
 
       outfsref = FSRef.malloc
-      audiofileid = AudioFileID.malloc
-      ret = AudioFile.AudioFileCreate(fsref, file, AudioFileWAVEType, outfmt, File::WRONLY|File::CREAT|File::TRUNC, outfsref, audiofileid)
-      unless ret == 0
-        raise "coreaudio: AudioFileCreate() fail to crreate AudioFile. (#{ret})"
-      end
-
       extfileref = ExtAudioFileRef.malloc
-      ret = AudioFile.ExtAudioFileWrapAudioFileID(audiofileid.ptr, 1, extfileref)
+      ret = AudioFile.ExtAudioFileCreateNew(fsref, file, AudioFileWAVEType,
+                                            outfmt, nil, extfileref)
       unless ret == 0
-        raise "coreaudio: ExtAudioFileWrapAudioFileID() fail to create AudioFile. (#{ret})"
+        raise "coreaudio: ExtAudioFileCreateNew() fail to create AudioFile. (#{ret})"
       end
 
       ret = AudioFile.ExtAudioFileSetProperty(extfileref.ptr, ExtAudioFileProperty_ClientDataFormat, AudioStreamBasicDescription.size, clientFormat)
@@ -187,13 +191,12 @@ module CoreAudio
         bufferlist.mData = data.pack("s*")
       end
 
-      ret = AudioFile.ExtAudioFileWrite(extfileref.ptr, data.size/2, bufferlist)
+      ret = AudioFile.ExtAudioFileWrite(extfileref.ptr, data.size/channel, bufferlist)
       unless ret == 0
         raise "coreaudio: ExtAudioFileWrite() fail to write AudioFile. (#{ret})"
       end
 
       AudioFile.ExtAudioFileDispose(extfileref.ptr)
-      AudioFile.AudioFileClose(audiofileid.ptr)
       nil
     end
     module_function :save_wav
