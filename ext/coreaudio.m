@@ -12,6 +12,7 @@ static VALUE rb_mCoreAudio;
 static VALUE rb_cAudioDevice;
 static VALUE rb_cAudioStream;
 static VALUE rb_cOutLoop;
+static VALUE rb_cAudioBuffer;
 static VALUE rb_cOutputBuffer;
 static VALUE rb_cInputBuffer;
 static ID sym_iv_devid;
@@ -580,6 +581,7 @@ typedef struct {
   float               *buf;
   UInt32              start;
   UInt32              end;
+  long                dropped_frame;
   pthread_mutex_t     mutex;
   pthread_cond_t      cond;
 } ca_buffer_data;
@@ -632,6 +634,7 @@ ca_buffer_data_start(VALUE self)
 
     TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
 
+    data->dropped_frame = 0;
     status = AudioDeviceStart(data->devID, data->procID);
     if ( status != noErr )
     {
@@ -697,6 +700,35 @@ ca_buffer_wait_blocking(VALUE value)
                                      RUBY_UBF_IO, NULL);
 }
 
+static VALUE
+ca_buffer_dropped_frame(VALUE self)
+{
+    ca_buffer_data *data;
+    long dropped;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+
+    pthread_mutex_lock(&data->mutex);
+    dropped = data->dropped_frame;
+    pthread_mutex_unlock(&data->mutex);
+    return LONG2NUM(dropped);
+}
+
+static VALUE
+ca_buffer_reset_dropped_frame(VALUE self)
+{
+    ca_buffer_data *data;
+    long dropped;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+
+    pthread_mutex_lock(&data->mutex);
+    dropped = data->dropped_frame;
+    data->dropped_frame = 0;
+    pthread_mutex_unlock(&data->mutex);
+    return LONG2NUM(dropped);
+}
+
 /*
  * Document-class: CoreAudio::OutputBuffer
  *
@@ -735,8 +767,10 @@ ca_out_buffer_proc(
       buffer_data->start = i;
       pthread_cond_broadcast(&buffer_data->cond);
       pthread_mutex_unlock(&buffer_data->mutex);
-      if ( copied < size )
+      if ( copied < size ) {
         memset(ptr+(copied*channel), 0, sizeof(float)*channel*(size-copied));
+        buffer_data->dropped_frame += size - copied;
+      }
     }
 
     return 0;
@@ -869,6 +903,7 @@ ca_in_buffer_proc(
                buffer_data->channel * sizeof(float));
       }
       buffer_data->end = idx;
+      buffer_data->dropped_frame += size - copied;
 
       pthread_cond_broadcast(&buffer_data->cond);
       pthread_mutex_unlock(&buffer_data->mutex);
@@ -967,8 +1002,9 @@ Init_coreaudio_ext(void)
     rb_cAudioDevice = rb_define_class_under(rb_mCoreAudio, "AudioDevice", rb_cObject);
     rb_cAudioStream = rb_define_class_under(rb_mCoreAudio, "AudioStream", rb_cObject);
     rb_cOutLoop = rb_define_class_under(rb_mCoreAudio, "OutLoop", rb_cObject);
-    rb_cOutputBuffer = rb_define_class_under(rb_mCoreAudio, "OutputBuffer", rb_cObject);
-    rb_cInputBuffer = rb_define_class_under(rb_mCoreAudio, "InputBuffer", rb_cObject);
+    rb_cAudioBuffer = rb_define_class_under(rb_mCoreAudio, "AudioBuffer", rb_cObject);
+    rb_cOutputBuffer = rb_define_class_under(rb_mCoreAudio, "OutputBuffer", rb_cAudioBuffer);
+    rb_cInputBuffer = rb_define_class_under(rb_mCoreAudio, "InputBuffer", rb_cAudioBuffer);
 
     rb_define_method(rb_cAudioDevice, "initialize", ca_device_initialize, 1);
     rb_define_method(rb_cAudioDevice, "actual_rate", ca_get_device_actual_sample_rate, 0);
@@ -992,11 +1028,12 @@ Init_coreaudio_ext(void)
     rb_define_method(rb_cOutLoop, "start", ca_out_loop_data_start, 0);
     rb_define_method(rb_cOutLoop, "stop", ca_out_loop_data_stop, 0);
 
-    rb_define_method(rb_cOutputBuffer, "start", ca_buffer_data_start, 0);
-    rb_define_method(rb_cOutputBuffer, "stop", ca_buffer_data_stop, 0);
+    rb_define_method(rb_cAudioBuffer, "start", ca_buffer_data_start, 0);
+    rb_define_method(rb_cAudioBuffer, "stop", ca_buffer_data_stop, 0);
+    rb_define_method(rb_cAudioBuffer, "dropped_frame", ca_buffer_dropped_frame, 0);
+    rb_define_method(rb_cAudioBuffer, "reset_dropped_frame", ca_buffer_reset_dropped_frame, 0);
+
     rb_define_method(rb_cOutputBuffer, "<<", ca_out_buffer_data_append, 1);
 
-    rb_define_method(rb_cInputBuffer, "start", ca_buffer_data_start, 0);
-    rb_define_method(rb_cInputBuffer, "stop", ca_buffer_data_stop, 0);
     rb_define_method(rb_cInputBuffer, "read", ca_in_buffer_data_read, 1);
 }
