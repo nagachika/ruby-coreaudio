@@ -11,12 +11,13 @@ th = Thread.start do
     wav = Array.new(1024){|j| 0.4 * Math.sin(phase*(i+j))}
     i += 1024
     buf << wav
-    p :write
   end
 end
 
 buf.start
 sleep 2
 buf.stop
+
+puts "#{buf.dropped_frame} frame dropped."
 
 th.kill
