@@ -8,11 +8,11 @@ CoreAudio (Audio Framework of Mac OS X) wrapper library for ruby 1.9
 * Get/Set device properties (numbers of channels, sample rate, frame size...)
 * Output audio data (Loop buffer, Stream buffer)
 * Input audio data (Stream buffer)
+* Save audio data to WAV file (wrapper for ExtAudioFile)
 
 == ToDo
-* Detect data drop in Stream Buffer
 * Switch input/output audio sample type (signed 16bit integer, Float)
-* Audio file access (wrapper for ExtAudioFile)
+* Read audio file (wrapper for ExtAudioFile)
 * Wrapper for AudioUnit/AudioGraph
 
 == Contributing to coreaudio
