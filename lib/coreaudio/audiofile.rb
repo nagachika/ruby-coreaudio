@@ -187,7 +187,7 @@ module CoreAudio
         bufferlist.mData = data.pack("s*")
       end
 
-      ret = AudioFile.ExtAudioFileWrite(extfileref.ptr, data.size/2, bufferlist)
+      ret = AudioFile.ExtAudioFileWrite(extfileref.ptr, data.size/channel, bufferlist)
       unless ret == 0
         raise "coreaudio: ExtAudioFileWrite() fail to write AudioFile. (#{ret})"
       end
