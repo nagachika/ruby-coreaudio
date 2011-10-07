@@ -8,7 +8,10 @@
 
 #include <ruby.h>
 
-static VALUE rb_mCoreAudio;
+#include "coreaudio.h"
+
+VALUE rb_mCoreAudio;
+
 static VALUE rb_cAudioDevice;
 static VALUE rb_cAudioStream;
 static VALUE rb_cOutLoop;
@@ -29,10 +32,6 @@ static ID sym_iv_buffer_frame_size;
   .mScope = kAudioObjectPropertyScopeGlobal,    \
   .mElement = kAudioObjectPropertyElementMaster \
 }
-
-#define CROPF(F) ((F) > 1.0 ? 1.0 : (((F) < -1.0) ? -1.0 : (F)))
-#define FLOAT2SHORT(F) ((short)(CROPF(F)*0x7FFF))
-#define SHORT2FLOAT(S) ((double)(S) / 32767.0)
 
 /*--- CoreAudio::AudioStream ---*/
 static VALUE
@@ -1031,6 +1030,8 @@ Init_coreaudio_ext(void)
     rb_define_attr(rb_cAudioDevice, "output_stream", 1, 0);
 
     rb_define_method(rb_cAudioStream, "initialize", ca_stream_initialize, 2);
+    rb_define_attr(rb_cAudioStream, "channels", 1, 0);
+    rb_define_attr(rb_cAudioStream, "buffer_frame_size", 1, 0);
 
     rb_define_singleton_method(rb_mCoreAudio, "devices", ca_devices, 0);
     rb_define_singleton_method(rb_mCoreAudio, "default_input_device", ca_default_input_device, 0);
@@ -1048,4 +1049,6 @@ Init_coreaudio_ext(void)
     rb_define_method(rb_cOutputBuffer, "<<", ca_out_buffer_data_append, 1);
 
     rb_define_method(rb_cInputBuffer, "read", ca_in_buffer_data_read, 1);
+
+    Init_coreaudio_audiofile();
 }

@@ -1,12 +1,22 @@
 
 require "coreaudio"
-require "coreaudio/audiofile"
 
 dev = CoreAudio.default_input_device
 buf = dev.input_buffer(1024)
 
-input_wave = []
-th = Thread.start{ loop { input_wave +=  buf.read(22050) } }
+wav = CoreAudio::AudioFile.new("sample.wav", :write, :format => :wav,
+                               :rate => dev.nominal_rate,
+                               :channel => dev.input_stream.channels)
+
+samples = 0
+th = Thread.start do
+  loop do
+    w = buf.read(4096)
+    samples += w.size / dev.input_stream.channels
+    wav.write(w)
+  end
+end
+
 buf.start;
 $stdout.print "RECORDING..."
 $stdout.flush
@@ -15,6 +25,7 @@ buf.stop
 $stdout.puts "done."
 th.kill.join
 
-puts "#{input_wave.size} samples read."
+wav.close
 
-CoreAudio::AudioFile.save_wav("aaa.wav", input_wave)
+puts "#{samples} samples read."
+puts "#{buf.dropped_frame} frame dropped."
