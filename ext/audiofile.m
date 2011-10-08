@@ -63,7 +63,7 @@ ca_audio_file_memsize(const void *ptr)
 
 static const rb_data_type_t ca_audio_file_type = {
   "ca_audio_file",
-  {NULL, ca_audio_file_free, ca_audio_file_memsize},
+  {NULL, ca_audio_file_free, ca_audio_file_memsize}
 };
 
 static VALUE
@@ -106,7 +106,6 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     UInt32 channel, file_channel;
     CFURLRef outUrl = NULL;
     AudioFileTypeID filetype;
-    ExtAudioFileRef audioFileRef = NULL;
     UInt32 flags = kAudioFileFlags_EraseFile;
     OSStatus err = noErr;
 
@@ -226,13 +225,13 @@ ca_audio_file_write(VALUE self, VALUE data)
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, file);
 
-    frames = RARRAY_LEN(data) / file->inner_desc.mChannelsPerFrame;
+    frames = RARRAY_LENINT(data) / file->inner_desc.mChannelsPerFrame;
     alloc_size = (file->inner_desc.mBitsPerChannel/8) * RARRAY_LEN(data);
 
     /* prepare interleaved audio buffer */
     buf_list.mNumberBuffers = 1;
     buf_list.mBuffers[0].mNumberChannels = file->inner_desc.mChannelsPerFrame;
-    buf_list.mBuffers[0].mDataByteSize = alloc_size;
+    buf_list.mBuffers[0].mDataByteSize = (UInt32)alloc_size;
     buf_list.mBuffers[0].mData = xmalloc(alloc_size);
     buf = buf_list.mBuffers[0].mData;
 
