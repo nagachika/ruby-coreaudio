@@ -63,7 +63,7 @@ ca_audio_file_memsize(const void *ptr)
 
 static const rb_data_type_t ca_audio_file_type = {
   "ca_audio_file",
-  {NULL, ca_audio_file_free, ca_audio_file_memsize},
+  {NULL, ca_audio_file_free, ca_audio_file_memsize}
 };
 
 static VALUE
