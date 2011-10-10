@@ -15,7 +15,7 @@ require 'jeweler'
 Jeweler::Tasks.new do |gem|
   # gem is a Gem::Specification... see http://docs.rubygems.org/read/chapter/20 for more options
   gem.name = "coreaudio"
-  gem.homepage = "http://github.com/nagachika/coreaudio"
+  gem.homepage = "https://github.com/nagachika/ruby-coreaudio"
   gem.license = "BSDL"
   gem.summary = %Q{Mac OS X CoreAudio wrapper library}
   gem.description = %Q{Mac OS X CoreAudio wrapper library}
