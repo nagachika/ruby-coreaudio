@@ -217,6 +217,7 @@ ca_audio_file_write(VALUE self, VALUE data)
     AudioBufferList buf_list;
     UInt32 frames;
     size_t alloc_size;
+    volatile VALUE tmpstr;
     OSStatus err = noErr;
     int i;
 
@@ -225,6 +226,9 @@ ca_audio_file_write(VALUE self, VALUE data)
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, file);
 
+    if (!file->for_write)
+      rb_raise(rb_eRuntimeError, "coreaudio: audio file opened for reading");
+
     frames = RARRAY_LENINT(data) / file->inner_desc.mChannelsPerFrame;
     alloc_size = (file->inner_desc.mBitsPerChannel/8) * RARRAY_LEN(data);
 
@@ -232,7 +236,7 @@ ca_audio_file_write(VALUE self, VALUE data)
     buf_list.mNumberBuffers = 1;
     buf_list.mBuffers[0].mNumberChannels = file->inner_desc.mChannelsPerFrame;
     buf_list.mBuffers[0].mDataByteSize = (UInt32)alloc_size;
-    buf_list.mBuffers[0].mData = xmalloc(alloc_size);
+    buf_list.mBuffers[0].mData = rb_alloc_tmp_buffer(&tmpstr, alloc_size);
     buf = buf_list.mBuffers[0].mData;
 
     for (i = 0; i < RARRAY_LEN(data); i++) {
@@ -241,7 +245,7 @@ ca_audio_file_write(VALUE self, VALUE data)
 
     err = ExtAudioFileWrite(file->file, frames, &buf_list);
 
-    xfree(buf);
+    rb_free_tmp_buffer(&tmpstr);
 
     if (err != noErr) {
       rb_raise(rb_eRuntimeError,
