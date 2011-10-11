@@ -104,9 +104,8 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     VALUE path, mode, opt, format;
     Float64 rate, file_rate;
     UInt32 channel, file_channel;
-    CFURLRef outUrl = NULL;
+    CFURLRef url = NULL;
     AudioFileTypeID filetype;
-    UInt32 flags = kAudioFileFlags_EraseFile;
     OSStatus err = noErr;
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, data);
@@ -117,7 +116,7 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     if (NIL_P(mode) || mode == sym_read)
       data->for_write = FALSE;
     else if (mode == sym_write)
-        data->for_write = TRUE;
+      data->for_write = TRUE;
     else
       rb_raise(rb_eArgError, "coreaudio: mode should be :read or :write");
 
@@ -165,17 +164,32 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     }
 
     /* create URL represent the target filepath */
-    outUrl = CFURLCreateFromFileSystemRepresentation(
+    url = CFURLCreateFromFileSystemRepresentation(
                 NULL, StringValueCStr(path), (CFIndex)RSTRING_LEN(path), FALSE);
 
     /* open ExtAudioFile */
-    err = ExtAudioFileCreateWithURL(outUrl, filetype, &data->file_desc,
-                                    NULL, flags, &data->file);
-    CFRelease(outUrl);
-    outUrl = NULL;
+    if (data->for_write)
+      err = ExtAudioFileCreateWithURL(url, filetype, &data->file_desc,
+                                      NULL, kAudioFileFlags_EraseFile,
+                                      &data->file);
+    else
+      err = ExtAudioFileOpenURL(url, &data->file);
+    CFRelease(url);
+    url = NULL;
     if (err != noErr) {
       rb_raise(rb_eArgError,
-               "coreaudio: file to open ExtAudioFile: %d", (int)err);
+               "coreaudio: fail to open ExtAudioFile: %d", (int)err);
+    }
+
+    /* get Audio Stream Basic Description (ASBD) from input file */
+    if (!data->for_write) {
+      UInt32 size = sizeof(data->file_desc);
+      err = ExtAudioFileGetProperty(data->file,
+                                    kExtAudioFileProperty_FileDataFormat,
+                                    &size, &data->file_desc);
+      if (err != noErr)
+        rb_raise(rb_eRuntimeError,
+                 "coreaudio: fail to Get ExtAudioFile Property %d", err);
     }
 
     setASBD(&data->inner_desc, rate, kAudioFormatLinearPCM,
@@ -255,6 +269,60 @@ ca_audio_file_write(VALUE self, VALUE data)
     return self;
 }
 
+static VALUE
+ca_audio_file_read(int argc, VALUE *argv, VALUE self)
+{
+    ca_audio_file_t *file;
+    VALUE frame_val;
+    UInt32 frames;
+    AudioBufferList buf_list;
+    short *buf;
+    size_t alloc_size;
+    volatile VALUE tmpstr;
+    VALUE ary;
+    UInt32 i;
+    OSStatus err = noErr;
+
+    TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, file);
+
+    if (file->for_write)
+      rb_raise(rb_eRuntimeError, "coreaudio: audio file open for writing");
+
+    rb_scan_args(argc, argv, "01", &frame_val);
+
+    if (NIL_P(frame_val)) {
+      rb_raise(rb_eNotImpError, "not implemented yet");
+    }
+    frames = NUM2UINT(frame_val);
+
+    alloc_size = (file->inner_desc.mBitsPerChannel/8) *
+      file->inner_desc.mChannelsPerFrame * frames;
+
+    /* prepare interleaved audio buffer */
+    buf_list.mNumberBuffers = 1;
+    buf_list.mBuffers[0].mNumberChannels = file->inner_desc.mChannelsPerFrame;
+    buf_list.mBuffers[0].mDataByteSize = (UInt32)alloc_size;
+    buf_list.mBuffers[0].mData = rb_alloc_tmp_buffer(&tmpstr, alloc_size);
+    buf = buf_list.mBuffers[0].mData;
+
+    err = ExtAudioFileRead(file->file, &frames, &buf_list);
+
+    if (err != noErr) {
+      rb_free_tmp_buffer(&tmpstr);
+      rb_raise(rb_eRuntimeError,
+               "coreaudio: ExtAudioFileRead() fails: %d", (int)err);
+    }
+
+    ary = rb_ary_new2(frames*file->inner_desc.mChannelsPerFrame);
+    for (i = 0; i < frames * file->inner_desc.mChannelsPerFrame; i++) {
+      rb_ary_push(ary, INT2NUM((int)buf[i]));
+    }
+
+    rb_free_tmp_buffer(&tmpstr);
+
+    return ary;
+}
+
 void
 Init_coreaudio_audiofile(void)
 {
@@ -276,4 +344,5 @@ Init_coreaudio_audiofile(void)
     rb_define_method(rb_cAudioFile, "initialize", ca_audio_file_initialize, -1);
     rb_define_method(rb_cAudioFile, "close", ca_audio_file_close, 0);
     rb_define_method(rb_cAudioFile, "write", ca_audio_file_write, 1);
+    rb_define_method(rb_cAudioFile, "read", ca_audio_file_read, -1);
 }
