@@ -77,6 +77,42 @@ ca_audio_file_alloc(VALUE klass)
     return obj;
 }
 
+static void
+parse_audio_file_options(VALUE opt, Boolean for_write,
+                         Float64 *rate, Float64 *file_rate,
+                         UInt32 *channel, UInt32 *file_channel)
+{
+    if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_rate))) {
+      if (for_write)
+        *rate = 44100.0;
+      else
+        *rate = *file_rate;
+    } else {
+      *rate = NUM2DBL(rb_hash_aref(opt, sym_rate));
+    }
+    if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_channel))) {
+      if (for_write)
+        *channel = 2;
+      else
+        *channel = *file_channel;
+    } else {
+      *channel = NUM2UINT(rb_hash_aref(opt, sym_channel));
+    }
+
+    if (for_write) {
+      if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_file_rate))) {
+        *file_rate = *rate;
+      } else {
+        *file_rate = NUM2DBL(rb_hash_aref(opt, sym_file_rate));
+      }
+      if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_file_channel))) {
+        *file_channel = *channel;
+      } else {
+        *file_channel = NUM2UINT(rb_hash_aref(opt, sym_file_channel));
+      }
+    }
+}
+
 /*
  * call-seq:
  *   AudioFile.new(filepath, mode, opt)
@@ -88,11 +124,11 @@ ca_audio_file_alloc(VALUE klass)
  * 'client data' means audio data pass to AudioFile#write or from
  * AudioFile#read method.
  *
- * :format :: audio file format. currently audio file format and 
+ * :format :: audio file format. currently audio file format and
  *            codec type is hardcoded. (:wav, :m4a)
  * :rate :: sample rate of data pass from AudioFile#read or to AudioFile#write
  *          If not specified, :file_rate value is used. (Float)
- * :channel :: number of channels 
+ * :channel :: number of channels
  * :file_rate :: file data sample rate. only work when open for output. (Float)
  * :file_channel :: file data number of channels. only work when open for
  *                  output.
@@ -120,47 +156,31 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     else
       rb_raise(rb_eArgError, "coreaudio: mode should be :read or :write");
 
-    /* parse options */
-    if (NIL_P(rb_hash_aref(opt, sym_rate))) {
-      rate = 44100.0;
-    } else {
-      rate = NUM2DBL(rb_hash_aref(opt, sym_rate));
-    }
-    if (NIL_P(rb_hash_aref(opt, sym_file_rate))) {
-      file_rate = rate;
-    } else {
-      file_rate = NUM2DBL(rb_hash_aref(opt, sym_file_rate));
-    }
-    if (NIL_P(rb_hash_aref(opt, sym_channel))) {
-      channel = 2;
-    } else {
-      channel = NUM2UINT(rb_hash_aref(opt, sym_channel));
-    }
-    if (NIL_P(rb_hash_aref(opt, sym_file_channel))) {
-      file_channel = channel;
-    } else {
-      file_channel = NUM2UINT(rb_hash_aref(opt, sym_file_channel));
-    }
+    if (data->for_write) {
+      /* when open for write, parse options before open ExtAudioFile */
+      parse_audio_file_options(opt, data->for_write, &rate, &file_rate,
+                               &channel, &file_channel);
 
-    format = rb_hash_aref(opt, sym_format);
-    if (NIL_P(format))
-      rb_raise(rb_eArgError, "coreaudio: :format option must be specified");
+      format = rb_hash_aref(opt, sym_format);
+      if (NIL_P(format))
+        rb_raise(rb_eArgError, "coreaudio: :format option must be specified");
 
-    if (format == sym_wav) {
-      filetype = kAudioFileWAVEType;
-      setASBD(&data->file_desc, file_rate, kAudioFormatLinearPCM,
-              kLinearPCMFormatFlagIsSignedInteger |
-              kAudioFormatFlagIsPacked,
-              file_channel, 16, 1);
-    } else if (format == sym_m4a) {
-      filetype = kAudioFileM4AType;
-      setASBD(&data->file_desc, file_rate, kAudioFormatMPEG4AAC,
-              0, file_channel, 0, 0);
-    } else {
-      volatile VALUE str = rb_inspect(format);
-      RB_GC_GUARD(str);
-      rb_raise(rb_eArgError, "coreaudio: unsupported format (%s)",
-               RSTRING_PTR(str));
+      if (format == sym_wav) {
+        filetype = kAudioFileWAVEType;
+        setASBD(&data->file_desc, file_rate, kAudioFormatLinearPCM,
+                kLinearPCMFormatFlagIsSignedInteger |
+                kAudioFormatFlagIsPacked,
+                file_channel, 16, 1);
+      } else if (format == sym_m4a) {
+        filetype = kAudioFileM4AType;
+        setASBD(&data->file_desc, file_rate, kAudioFormatMPEG4AAC,
+                0, file_channel, 0, 0);
+      } else {
+        volatile VALUE str = rb_inspect(format);
+        RB_GC_GUARD(str);
+        rb_raise(rb_eArgError, "coreaudio: unsupported format (%s)",
+                 RSTRING_PTR(str));
+      }
     }
 
     /* create URL represent the target filepath */
@@ -190,6 +210,12 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
       if (err != noErr)
         rb_raise(rb_eRuntimeError,
                  "coreaudio: fail to Get ExtAudioFile Property %d", err);
+
+      /* parse options */
+      file_rate = data->file_desc.mSampleRate;
+      file_channel = data->file_desc.mChannelsPerFrame;
+      parse_audio_file_options(opt, data->for_write, &rate, &file_rate,
+                               &channel, &file_channel);
     }
 
     setASBD(&data->inner_desc, rate, kAudioFormatLinearPCM,
