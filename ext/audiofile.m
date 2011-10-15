@@ -240,6 +240,9 @@ ca_audio_file_write(VALUE self, VALUE data)
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, file);
 
+    if (file->file == NULL)
+      rb_raise(rb_eIOError, "coreaudio: already closend file");
+
     if (!file->for_write)
       rb_raise(rb_eRuntimeError, "coreaudio: audio file opened for reading");
 
@@ -284,6 +287,9 @@ ca_audio_file_read(int argc, VALUE *argv, VALUE self)
     OSStatus err = noErr;
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, file);
+
+    if (file->file == NULL)
+      rb_raise(rb_eIOError, "coreaudio: already closend file");
 
     if (file->for_write)
       rb_raise(rb_eRuntimeError, "coreaudio: audio file open for writing");
