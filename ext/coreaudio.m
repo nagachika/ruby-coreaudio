@@ -1010,19 +1010,12 @@ Init_coreaudio_ext(void)
     sym_iv_buffer_frame_size = rb_intern("@buffer_frame_size");
 
     rb_mCoreAudio = rb_define_module("CoreAudio");
-    rb_global_variable(&rb_mCoreAudio);
     rb_cAudioDevice = rb_define_class_under(rb_mCoreAudio, "AudioDevice", rb_cObject);
-    rb_global_variable(&rb_cAudioDevice);
     rb_cAudioStream = rb_define_class_under(rb_mCoreAudio, "AudioStream", rb_cObject);
-    rb_global_variable(&rb_cAudioStream);
     rb_cOutLoop = rb_define_class_under(rb_mCoreAudio, "OutLoop", rb_cObject);
-    rb_global_variable(&rb_cOutLoop);
     rb_cAudioBuffer = rb_define_class_under(rb_mCoreAudio, "AudioBuffer", rb_cObject);
-    rb_global_variable(&rb_cAudioBuffer);
     rb_cOutputBuffer = rb_define_class_under(rb_mCoreAudio, "OutputBuffer", rb_cAudioBuffer);
-    rb_global_variable(&rb_cOutputBuffer);
     rb_cInputBuffer = rb_define_class_under(rb_mCoreAudio, "InputBuffer", rb_cAudioBuffer);
-    rb_global_variable(&rb_cInputBuffer);
 
     rb_define_method(rb_cAudioDevice, "initialize", ca_device_initialize, 1);
     rb_define_method(rb_cAudioDevice, "actual_rate", ca_get_device_actual_sample_rate, 0);

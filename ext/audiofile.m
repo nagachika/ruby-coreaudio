@@ -338,7 +338,6 @@ Init_coreaudio_audiofile(void)
 
     rb_cAudioFile = rb_define_class_under(rb_mCoreAudio, "AudioFile",
                                           rb_cObject);
-    rb_global_variable(&rb_cAudioFile);
 
     rb_define_alloc_func(rb_cAudioFile, ca_audio_file_alloc);
     rb_define_method(rb_cAudioFile, "initialize", ca_audio_file_initialize, -1);
