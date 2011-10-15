@@ -1,3 +1,6 @@
+ext/Makefile
+ext/extconf.h
+
 # rcov generated
 coverage
 
@@ -27,7 +30,7 @@ pkg
 #
 # For MacOS:
 #
-#.DS_Store
+.DS_Store
 
 # For TextMate
 #*.tmproj
