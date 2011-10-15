@@ -329,6 +329,46 @@ ca_audio_file_read(int argc, VALUE *argv, VALUE self)
     return ary;
 }
 
+static VALUE
+ca_audio_file_rate(VALUE self)
+{
+    ca_audio_file_t *data;
+
+    TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, data);
+
+    return DBL2NUM(data->file_desc.mSampleRate);
+}
+
+static VALUE
+ca_audio_file_channel(VALUE self)
+{
+    ca_audio_file_t *data;
+
+    TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, data);
+
+    return UINT2NUM((unsigned int)data->file_desc.mChannelsPerFrame);
+}
+
+static VALUE
+ca_audio_file_inner_rate(VALUE self)
+{
+    ca_audio_file_t *data;
+
+    TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, data);
+
+    return DBL2NUM(data->inner_desc.mSampleRate);
+}
+
+static VALUE
+ca_audio_file_inner_channel(VALUE self)
+{
+    ca_audio_file_t *data;
+
+    TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, data);
+
+    return UINT2NUM((unsigned int)data->inner_desc.mChannelsPerFrame);
+}
+
 void
 Init_coreaudio_audiofile(void)
 {
@@ -350,4 +390,8 @@ Init_coreaudio_audiofile(void)
     rb_define_method(rb_cAudioFile, "close", ca_audio_file_close, 0);
     rb_define_method(rb_cAudioFile, "write", ca_audio_file_write, 1);
     rb_define_method(rb_cAudioFile, "read", ca_audio_file_read, -1);
+    rb_define_method(rb_cAudioFile, "rate", ca_audio_file_rate, 0);
+    rb_define_method(rb_cAudioFile, "channel", ca_audio_file_channel, 0);
+    rb_define_method(rb_cAudioFile, "inner_rate", ca_audio_file_inner_rate, 0);
+    rb_define_method(rb_cAudioFile, "inner_channel", ca_audio_file_inner_channel, 0);
 }
