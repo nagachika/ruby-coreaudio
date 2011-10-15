@@ -49,7 +49,7 @@ ca_audio_file_free(void *ptr)
     ca_audio_file_t *data = ptr;
 
     if ( data->file ) {
-      CFRelease(data->file);
+      ExtAudioFileDispose(data->file);
       data->file = NULL;
     }
 }
