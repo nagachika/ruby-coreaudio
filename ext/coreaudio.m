@@ -422,7 +422,7 @@ ca_out_loop_proc(
       float *ptr = outOutputData->mBuffers[i].mData;
       UInt32 size = outOutputData->mBuffers[i].mDataByteSize / (UInt32)sizeof(float) / channel;
       UInt32 offset = (UInt32)inOutputTime->mSampleTime % loop_data->frame;
-      unsigned long copied = 0;
+      UInt32 copied = 0;
 
       if (outOutputData->mBuffers[i].mNumberChannels != channel) {
         memset(ptr, 0, size * channel * sizeof(float));

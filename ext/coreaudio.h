@@ -13,7 +13,7 @@ extern void Init_coreaudio_audiofile(void);
 /*-- Utility Macros --*/
 #define CROPF(F) ((F) > 1.0 ? 1.0 : (((F) < -1.0) ? -1.0 : (F)))
 #define FLOAT2SHORT(F) ((short)(CROPF(F)*0x7FFF))
-#define SHORT2FLOAT(S) ((double)(S) / 32767.0)
+#define SHORT2FLOAT(S) ((float)(S) / (float)32767.0)
 
 /*-- prototypes for missing functions --*/
 
