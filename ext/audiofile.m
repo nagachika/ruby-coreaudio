@@ -141,7 +141,7 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     Float64 rate, file_rate;
     UInt32 channel, file_channel;
     CFURLRef url = NULL;
-    AudioFileTypeID filetype;
+    AudioFileTypeID filetype = 0;
     OSStatus err = noErr;
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, data);
@@ -303,7 +303,7 @@ ca_audio_file_read(int argc, VALUE *argv, VALUE self)
 {
     ca_audio_file_t *file;
     VALUE frame_val;
-    UInt32 frames;
+    UInt32 frames, chunk, total, read_frames;
     AudioBufferList buf_list;
     short *buf;
     size_t alloc_size;
@@ -323,12 +323,14 @@ ca_audio_file_read(int argc, VALUE *argv, VALUE self)
     rb_scan_args(argc, argv, "01", &frame_val);
 
     if (NIL_P(frame_val)) {
-      rb_raise(rb_eNotImpError, "not implemented yet");
+      frames = 0;
+      chunk = 1024;
+    } else {
+      frames = chunk = NUM2UINT(frame_val);
     }
-    frames = NUM2UINT(frame_val);
 
     alloc_size = (file->inner_desc.mBitsPerChannel/8) *
-      file->inner_desc.mChannelsPerFrame * frames;
+      file->inner_desc.mChannelsPerFrame * chunk;
 
     /* prepare interleaved audio buffer */
     buf_list.mNumberBuffers = 1;
@@ -337,17 +339,24 @@ ca_audio_file_read(int argc, VALUE *argv, VALUE self)
     buf_list.mBuffers[0].mData = rb_alloc_tmp_buffer(&tmpstr, alloc_size);
     buf = buf_list.mBuffers[0].mData;
 
-    err = ExtAudioFileRead(file->file, &frames, &buf_list);
+    ary = rb_ary_new2(chunk*file->inner_desc.mChannelsPerFrame);
 
-    if (err != noErr) {
-      rb_free_tmp_buffer(&tmpstr);
-      rb_raise(rb_eRuntimeError,
-               "coreaudio: ExtAudioFileRead() fails: %d", (int)err);
-    }
+    for (total = 0; total < frames || frames == 0; total += read_frames) {
+      read_frames = chunk;
+      err = ExtAudioFileRead(file->file, &read_frames, &buf_list);
 
-    ary = rb_ary_new2(frames*file->inner_desc.mChannelsPerFrame);
-    for (i = 0; i < frames * file->inner_desc.mChannelsPerFrame; i++) {
-      rb_ary_push(ary, INT2NUM((int)buf[i]));
+      if (err != noErr) {
+        rb_free_tmp_buffer(&tmpstr);
+        rb_raise(rb_eRuntimeError,
+                 "coreaudio: ExtAudioFileRead() fails: %d", (int)err);
+      }
+
+      if (read_frames == 0)
+        break;
+
+      for (i = 0; i < read_frames * file->inner_desc.mChannelsPerFrame; i++) {
+        rb_ary_push(ary, INT2NUM((int)buf[i]));
+      }
     }
 
     rb_free_tmp_buffer(&tmpstr);
