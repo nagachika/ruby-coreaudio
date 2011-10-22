@@ -374,7 +374,7 @@ typedef struct {
   AudioDeviceID       devID;
   AudioDeviceIOProcID procID;
   UInt32              frame;
-  UInt32              channel;
+  UInt32              channels;
   short               *buf;
 } ca_out_loop_data;
 
@@ -395,7 +395,7 @@ static size_t
 ca_out_loop_data_memsize(const void *ptr)
 {
     const ca_out_loop_data *data = ptr;
-    return sizeof(ca_out_loop_data) + data->channel * data->frame * sizeof(short);
+    return sizeof(ca_out_loop_data) + data->channels * data->frame * sizeof(short);
 }
 
 static const rb_data_type_t ca_out_loop_data_type = {
@@ -416,16 +416,16 @@ ca_out_loop_proc(
     NSUInteger i;
     UInt32 buffers = outOutputData->mNumberBuffers;
     ca_out_loop_data *loop_data = inClientData;
-    UInt32 channel = loop_data->channel;
+    UInt32 channels = loop_data->channels;
 
     for (i = 0; i < buffers; i++) {
       float *ptr = outOutputData->mBuffers[i].mData;
-      UInt32 size = outOutputData->mBuffers[i].mDataByteSize / (UInt32)sizeof(float) / channel;
+      UInt32 size = outOutputData->mBuffers[i].mDataByteSize / (UInt32)sizeof(float) / channels;
       UInt32 offset = (UInt32)inOutputTime->mSampleTime % loop_data->frame;
       UInt32 copied = 0;
 
-      if (outOutputData->mBuffers[i].mNumberChannels != channel) {
-        memset(ptr, 0, size * channel * sizeof(float));
+      if (outOutputData->mBuffers[i].mNumberChannels != channels) {
+        memset(ptr, 0, size * channels * sizeof(float));
         continue;
       }
 
@@ -434,8 +434,8 @@ ca_out_loop_proc(
         UInt32 j;
         if ( len > size - copied )
           len = size - copied;
-        for (j = 0; j < len*channel; j++) {
-          ptr[copied*channel+j] = SHORT2FLOAT(loop_data->buf[offset*channel+j]);
+        for (j = 0; j < len*channels; j++) {
+          ptr[copied*channels+j] = SHORT2FLOAT(loop_data->buf[offset*channels+j]);
         }
         offset = (offset + len) % loop_data->frame;
         copied += len;
@@ -456,7 +456,7 @@ ca_out_loop_data_alloc(VALUE klass)
 }
 
 static VALUE
-ca_out_loop_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel)
+ca_out_loop_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channels)
 {
     ca_out_loop_data *data;
     OSStatus status;
@@ -469,8 +469,8 @@ ca_out_loop_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel)
       rb_raise(rb_eRuntimeError, "coreaudio: create proc ID fail: %d", status);
     }
     data->frame = NUM2UINT(frame);
-    data->channel = NUM2UINT(channel);
-    data->buf = malloc(sizeof(short)*data->frame*data->channel);
+    data->channels = NUM2UINT(channels);
+    data->buf = malloc(sizeof(short)*data->frame*data->channels);
     if (data->buf == NULL)
       rb_raise(rb_eNoMemError, "coreaudio: fail to alloc out loop data buffer");
     return self;
@@ -550,7 +550,7 @@ ca_out_loop_data_stop(VALUE self)
  *
  * Assign audio loop buffer frame value.
  * If assigned value is an Fixnum (-32767..32767, signed 16bit),
- * the value is stored to all channel.
+ * the value is stored to all channels.
  * The +sample+ should be normalize to -32767 <= sample <= 32767 range.
  * If assigned value is an Array of Fixnum, each value is stored to each
  * correponding channel. If size of array is not equal to the AudioDevice's
@@ -567,15 +567,15 @@ ca_out_loop_data_assign(VALUE self, VALUE index, VALUE val)
 
     idx = NUM2UINT(index) % data->frame;
     if (TYPE(val) == T_ARRAY) {
-      if (RARRAY_LEN(val) != data->channel) {
+      if (RARRAY_LEN(val) != data->channels) {
         rb_raise(rb_eArgError, "size of array and channel size mismatch");
       }
-      for (i = 0; i < data->channel; i++) {
-        data->buf[idx*data->channel+i] = (short)NUM2INT(RARRAY_PTR(val)[i]);
+      for (i = 0; i < data->channels; i++) {
+        data->buf[idx*data->channels+i] = (short)NUM2INT(RARRAY_PTR(val)[i]);
       }
     } else {
-      for (i = 0; i < data->channel; i++) {
-        data->buf[idx*data->channel+i] = (short)NUM2INT(val);
+      for (i = 0; i < data->channels; i++) {
+        data->buf[idx*data->channels+i] = (short)NUM2INT(val);
       }
     }
     return val;
@@ -585,7 +585,7 @@ typedef struct {
   AudioDeviceID       devID;
   AudioDeviceIOProcID procID;
   UInt32              frame;
-  UInt32              channel;
+  UInt32              channels;
   short               *buf;
   UInt32              start;
   UInt32              end;
@@ -613,7 +613,7 @@ static size_t
 ca_buffer_data_memsize(const void *ptr)
 {
     const ca_buffer_data *data = ptr;
-    return sizeof(ca_buffer_data) + data->channel * data->frame * sizeof(short);
+    return sizeof(ca_buffer_data) + data->channels * data->frame * sizeof(short);
 }
 
 static const rb_data_type_t ca_buffer_data_type = {
@@ -754,31 +754,31 @@ ca_out_buffer_proc(
     NSUInteger n_buf;
     UInt32 buffers = outOutputData->mNumberBuffers;
     ca_buffer_data *buffer_data = inClientData;
-    UInt32 channel = buffer_data->channel;
+    UInt32 channels = buffer_data->channels;
 
     for (n_buf = 0; n_buf < buffers; n_buf++) {
       float *ptr = outOutputData->mBuffers[n_buf].mData;
-      UInt32 size = outOutputData->mBuffers[n_buf].mDataByteSize / (UInt32)sizeof(float) / channel;
+      UInt32 size = outOutputData->mBuffers[n_buf].mDataByteSize / (UInt32)sizeof(float) / channels;
       UInt32 copied = 0;
       UInt32 i;
 
-      if (outOutputData->mBuffers[n_buf].mNumberChannels != channel) {
-        memset(ptr, 0, size * channel * sizeof(float));
+      if (outOutputData->mBuffers[n_buf].mNumberChannels != channels) {
+        memset(ptr, 0, size * channels * sizeof(float));
         continue;
       }
 
       pthread_mutex_lock(&buffer_data->mutex);
       for ( copied = 0, i = buffer_data->start; copied < size && i != buffer_data->end; copied++, i = (i+1) % buffer_data->frame ) {
         UInt32 ch;
-        for (ch = 0; ch < channel; ch++) {
-          ptr[copied*channel+ch] = SHORT2FLOAT(buffer_data->buf[i*channel+ch]);
+        for (ch = 0; ch < channels; ch++) {
+          ptr[copied*channels+ch] = SHORT2FLOAT(buffer_data->buf[i*channels+ch]);
         }
       }
       buffer_data->start = i;
       pthread_cond_broadcast(&buffer_data->cond);
       pthread_mutex_unlock(&buffer_data->mutex);
       if ( copied < size ) {
-        memset(ptr+(copied*channel), 0, sizeof(float)*channel*(size-copied));
+        memset(ptr+(copied*channels), 0, sizeof(float)*channels*(size-copied));
         buffer_data->dropped_frame += size - copied;
       }
     }
@@ -787,7 +787,7 @@ ca_out_buffer_proc(
 }
 
 static VALUE
-ca_out_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel)
+ca_out_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channels)
 {
     ca_buffer_data *data;
     OSStatus status;
@@ -800,8 +800,8 @@ ca_out_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channe
       rb_raise(rb_eRuntimeError, "coreaudio: create proc ID fail: %d", status);
     }
     data->frame = NUM2UINT(frame);
-    data->channel = NUM2UINT(channel);
-    data->buf = malloc(sizeof(short)*data->frame*data->channel);
+    data->channels = NUM2UINT(channels);
+    data->buf = malloc(sizeof(short)*data->frame*data->channels);
     if (data->buf == NULL)
       rb_raise(rb_eNoMemError, "coreaudio: fail to alloc out buffer data buffer");
     return self;
@@ -838,7 +838,7 @@ ca_out_buffer_data_append(VALUE self, VALUE nary)
       frames = NA_SHAPE0(nary);
     } else if (rank == 2) {
       frames = NA_SHAPE1(nary);
-      if (NA_SHAPE0(nary) != (int)data->channel)
+      if (NA_SHAPE0(nary) != (int)data->channels)
         rb_raise(rb_eArgError,
                  "coreaudio: audio buffer NArray size of first dim. must be "
                  "number of channels");
@@ -872,12 +872,12 @@ ca_out_buffer_data_append(VALUE self, VALUE nary)
       }
 
       if (rank == 2) {
-        memcpy(data->buf + idx * data->channel,
-               buf + i * data->channel,
-               sizeof(short) * data->channel);
+        memcpy(data->buf + idx * data->channels,
+               buf + i * data->channels,
+               sizeof(short) * data->channels);
       } else {
-        for (j = 0; j < data->channel; j++) {
-          data->buf[idx*data->channel+j] = buf[i];
+        for (j = 0; j < data->channels; j++) {
+          data->buf[idx*data->channels+j] = buf[i];
         }
       }
       data->end = idx;
@@ -904,14 +904,14 @@ ca_in_buffer_proc(
     NSUInteger n_buf;
     UInt32 buffers = inInputData->mNumberBuffers;
     ca_buffer_data *buffer_data = inClientData;
-    UInt32 channel = buffer_data->channel;
+    UInt32 channels = buffer_data->channels;
 
     for (n_buf = 0; n_buf < buffers; n_buf++) {
       float *ptr = inInputData->mBuffers[n_buf].mData;
-      UInt32 size = inInputData->mBuffers[n_buf].mDataByteSize / (UInt32)sizeof(float) / channel;
+      UInt32 size = inInputData->mBuffers[n_buf].mDataByteSize / (UInt32)sizeof(float) / channels;
       UInt32 copied, idx;
 
-      if (inInputData->mBuffers[n_buf].mNumberChannels != channel) {
+      if (inInputData->mBuffers[n_buf].mNumberChannels != channels) {
         continue;
       }
 
@@ -922,8 +922,8 @@ ca_in_buffer_proc(
            copied < size && (idx+1) % buffer_data->frame != buffer_data->start;
            copied++, idx = (idx+1) % buffer_data->frame) {
         UInt32 ch;
-        for (ch = 0; ch < channel; ch++) {
-          buffer_data->buf[idx*channel+ch] = FLOAT2SHORT(ptr[copied*channel+ch]);
+        for (ch = 0; ch < channels; ch++) {
+          buffer_data->buf[idx*channels+ch] = FLOAT2SHORT(ptr[copied*channels+ch]);
         }
       }
       buffer_data->end = idx;
@@ -937,7 +937,7 @@ ca_in_buffer_proc(
 }
 
 static VALUE
-ca_in_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel)
+ca_in_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channels)
 {
     ca_buffer_data *data;
     OSStatus status;
@@ -950,8 +950,8 @@ ca_in_buffer_data_initialize(VALUE self, VALUE devID, VALUE frame, VALUE channel
       rb_raise(rb_eRuntimeError, "coreaudio: create proc ID fail: %d", status);
     }
     data->frame = NUM2UINT(frame);
-    data->channel = NUM2UINT(channel);
-    data->buf = malloc(sizeof(short)*data->frame*data->channel);
+    data->channels = NUM2UINT(channels);
+    data->buf = malloc(sizeof(short)*data->frame*data->channels);
     if (data->buf == NULL)
       rb_raise(rb_eNoMemError, "coreaudio: fail to alloc input buffer data buffer");
     return self;
@@ -981,7 +981,7 @@ ca_in_buffer_data_read(VALUE self, VALUE num)
 
     TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
 
-    shape[0] = data->channel;
+    shape[0] = data->channels;
     shape[1] = frame;
     nary = na_make_object(NA_SINT, 2, shape, cNArray);
     buf = NA_PTR_TYPE(nary, short *);
@@ -1006,8 +1006,8 @@ ca_in_buffer_data_read(VALUE self, VALUE num)
             break;
         }
       }
-      memcpy(buf + i * data->channel, data->buf + data->start*data->channel,
-             sizeof(short) * data->channel);
+      memcpy(buf + i * data->channels, data->buf + data->start*data->channels,
+             sizeof(short) * data->channels);
     }
     pthread_mutex_unlock(&data->mutex);
     return nary;

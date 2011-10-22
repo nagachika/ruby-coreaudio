@@ -6,7 +6,7 @@ buf = dev.input_buffer(1024)
 
 wav = CoreAudio::AudioFile.new("sample.wav", :write, :format => :wav,
                                :rate => dev.nominal_rate,
-                               :channel => dev.input_stream.channels)
+                               :channels => dev.input_stream.channels)
 
 samples = 0
 th = Thread.start do

@@ -14,7 +14,7 @@
 VALUE rb_cAudioFile;
 
 static VALUE sym_read, sym_write, sym_format;
-static VALUE sym_rate, sym_file_rate, sym_channel, sym_file_channel;
+static VALUE sym_rate, sym_file_rate, sym_channels, sym_file_channels;
 static VALUE sym_wav, sym_m4a;
 
 static void
@@ -22,7 +22,7 @@ setASBD(AudioStreamBasicDescription *asbd,
         Float64 rate,
         UInt32 format,
         UInt32 flags,
-        UInt32 channel,
+        UInt32 channels,
         UInt32 bitsPerChannel,
         UInt32 framePerPacket)
 {
@@ -30,10 +30,10 @@ setASBD(AudioStreamBasicDescription *asbd,
     asbd->mFormatID = format;
     asbd->mFormatFlags = flags;
     asbd->mBitsPerChannel = bitsPerChannel;
-    asbd->mChannelsPerFrame = channel;
+    asbd->mChannelsPerFrame = channels;
     asbd->mFramesPerPacket = framePerPacket;
-    asbd->mBytesPerFrame = bitsPerChannel/8*channel;
-    asbd->mBytesPerPacket = bitsPerChannel/8*channel*framePerPacket;
+    asbd->mBytesPerFrame = bitsPerChannel/8*channels;
+    asbd->mBytesPerPacket = bitsPerChannel/8*channels*framePerPacket;
 }
 
 typedef struct {
@@ -80,7 +80,7 @@ ca_audio_file_alloc(VALUE klass)
 static void
 parse_audio_file_options(VALUE opt, Boolean for_write,
                          Float64 *rate, Float64 *file_rate,
-                         UInt32 *channel, UInt32 *file_channel)
+                         UInt32 *channels, UInt32 *file_channels)
 {
     if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_rate))) {
       if (for_write)
@@ -90,13 +90,13 @@ parse_audio_file_options(VALUE opt, Boolean for_write,
     } else {
       *rate = NUM2DBL(rb_hash_aref(opt, sym_rate));
     }
-    if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_channel))) {
+    if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_channels))) {
       if (for_write)
-        *channel = 2;
+        *channels = 2;
       else
-        *channel = *file_channel;
+        *channels = *file_channels;
     } else {
-      *channel = NUM2UINT(rb_hash_aref(opt, sym_channel));
+      *channels = NUM2UINT(rb_hash_aref(opt, sym_channels));
     }
 
     if (for_write) {
@@ -105,10 +105,10 @@ parse_audio_file_options(VALUE opt, Boolean for_write,
       } else {
         *file_rate = NUM2DBL(rb_hash_aref(opt, sym_file_rate));
       }
-      if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_file_channel))) {
-        *file_channel = *channel;
+      if (NIL_P(opt) || NIL_P(rb_hash_aref(opt, sym_file_channels))) {
+        *file_channels = *channels;
       } else {
-        *file_channel = NUM2UINT(rb_hash_aref(opt, sym_file_channel));
+        *file_channels = NUM2UINT(rb_hash_aref(opt, sym_file_channels));
       }
     }
 }
@@ -128,9 +128,9 @@ parse_audio_file_options(VALUE opt, Boolean for_write,
  *            codec type is hardcoded. (:wav, :m4a)
  * :rate :: sample rate of data pass from AudioFile#read or to AudioFile#write
  *          If not specified, :file_rate value is used. (Float)
- * :channel :: number of channels
+ * :channels :: number of channels
  * :file_rate :: file data sample rate. only work when open for output. (Float)
- * :file_channel :: file data number of channels. only work when open for
+ * :file_channels :: file data number of channels. only work when open for
  *                  output.
  */
 static VALUE
@@ -139,7 +139,7 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     ca_audio_file_t *data;
     VALUE path, mode, opt, format;
     Float64 rate, file_rate;
-    UInt32 channel, file_channel;
+    UInt32 channels, file_channels;
     CFURLRef url = NULL;
     AudioFileTypeID filetype = 0;
     OSStatus err = noErr;
@@ -159,7 +159,7 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
     if (data->for_write) {
       /* when open for write, parse options before open ExtAudioFile */
       parse_audio_file_options(opt, data->for_write, &rate, &file_rate,
-                               &channel, &file_channel);
+                               &channels, &file_channels);
 
       format = rb_hash_aref(opt, sym_format);
       if (NIL_P(format))
@@ -170,11 +170,11 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
         setASBD(&data->file_desc, file_rate, kAudioFormatLinearPCM,
                 kLinearPCMFormatFlagIsSignedInteger |
                 kAudioFormatFlagIsPacked,
-                file_channel, 16, 1);
+                file_channels, 16, 1);
       } else if (format == sym_m4a) {
         filetype = kAudioFileM4AType;
         setASBD(&data->file_desc, file_rate, kAudioFormatMPEG4AAC,
-                0, file_channel, 0, 0);
+                0, file_channels, 0, 0);
       } else {
         volatile VALUE str = rb_inspect(format);
         RB_GC_GUARD(str);
@@ -213,14 +213,14 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
 
       /* parse options */
       file_rate = data->file_desc.mSampleRate;
-      file_channel = data->file_desc.mChannelsPerFrame;
+      file_channels = data->file_desc.mChannelsPerFrame;
       parse_audio_file_options(opt, data->for_write, &rate, &file_rate,
-                               &channel, &file_channel);
+                               &channels, &file_channels);
     }
 
     setASBD(&data->inner_desc, rate, kAudioFormatLinearPCM,
             kLinearPCMFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
-            channel, 16, 1);
+            channels, 16, 1);
 
     err = ExtAudioFileSetProperty(
             data->file, kExtAudioFileProperty_ClientDataFormat,
@@ -383,7 +383,7 @@ ca_audio_file_rate(VALUE self)
 }
 
 static VALUE
-ca_audio_file_channel(VALUE self)
+ca_audio_file_channels(VALUE self)
 {
     ca_audio_file_t *data;
 
@@ -403,7 +403,7 @@ ca_audio_file_inner_rate(VALUE self)
 }
 
 static VALUE
-ca_audio_file_inner_channel(VALUE self)
+ca_audio_file_inner_channels(VALUE self)
 {
     ca_audio_file_t *data;
 
@@ -420,8 +420,8 @@ Init_coreaudio_audiofile(void)
     sym_format = ID2SYM(rb_intern("format"));
     sym_rate = ID2SYM(rb_intern("rate"));
     sym_file_rate = ID2SYM(rb_intern("file_rate"));
-    sym_channel = ID2SYM(rb_intern("channel"));
-    sym_file_channel = ID2SYM(rb_intern("file_channel"));
+    sym_channels = ID2SYM(rb_intern("channels"));
+    sym_file_channels = ID2SYM(rb_intern("file_channels"));
     sym_wav = ID2SYM(rb_intern("wav"));
     sym_m4a = ID2SYM(rb_intern("m4a"));
 
@@ -434,7 +434,7 @@ Init_coreaudio_audiofile(void)
     rb_define_method(rb_cAudioFile, "write", ca_audio_file_write, 1);
     rb_define_method(rb_cAudioFile, "read_frames", ca_audio_file_read_frames, 1);
     rb_define_method(rb_cAudioFile, "rate", ca_audio_file_rate, 0);
-    rb_define_method(rb_cAudioFile, "channel", ca_audio_file_channel, 0);
+    rb_define_method(rb_cAudioFile, "channels", ca_audio_file_channels, 0);
     rb_define_method(rb_cAudioFile, "inner_rate", ca_audio_file_inner_rate, 0);
-    rb_define_method(rb_cAudioFile, "inner_channel", ca_audio_file_inner_channel, 0);
+    rb_define_method(rb_cAudioFile, "inner_channels", ca_audio_file_inner_channels, 0);
 }
