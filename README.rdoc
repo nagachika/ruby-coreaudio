@@ -12,7 +12,6 @@ CoreAudio (Audio Framework of Mac OS X) wrapper library for ruby 1.9
 * Ream audio file (WAV/M4A)
 
 == ToDo
-* Switch input/output audio sample type (signed 16bit integer, packed String)
 * Wrapper for AudioUnit/AudioGraph
 
 == Contributing to coreaudio
