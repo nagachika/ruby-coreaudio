@@ -253,16 +253,20 @@ static VALUE
 ca_audio_file_write(VALUE self, VALUE data)
 {
     ca_audio_file_t *file;
-    short *buf;
+    UInt32 n_ch;
+    int rank;
+    short *buf = NULL;
     AudioBufferList buf_list;
     UInt32 frames;
     size_t alloc_size;
-    volatile VALUE tmpstr;
+    volatile VALUE tmpstr = Qundef;
     OSStatus err = noErr;
-    int i;
 
-    if (!RB_TYPE_P(data, T_ARRAY))
-      rb_raise(rb_eArgError, "coreaudio: audio buffer must be an array");
+    /* cast to NArray of SINT and check rank of NArray */
+    data = na_cast_object(data, NA_SINT);
+    rank = NA_RANK(data);
+    if (rank > 3)
+      rb_raise(rb_eArgError, "coreaudio: audio buffer rank must be 1 or 2.");
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, file);
 
@@ -272,23 +276,42 @@ ca_audio_file_write(VALUE self, VALUE data)
     if (!file->for_write)
       rb_raise(rb_eRuntimeError, "coreaudio: audio file opened for reading");
 
-    frames = RARRAY_LENINT(data) / file->inner_desc.mChannelsPerFrame;
-    alloc_size = (file->inner_desc.mBitsPerChannel/8) * RARRAY_LEN(data);
+    n_ch = file->inner_desc.mChannelsPerFrame;
+
+    if (rank == 2 && NA_SHAPE0(data) != (int)n_ch)
+      rb_raise(rb_eArgError,
+               "coreaudio: audio buffer size of first dimension must be "
+               "equal to number of channels");
+
+    frames = rank == 1 ? NA_SHAPE0(data) : NA_SHAPE1(data);
+    alloc_size = (file->inner_desc.mBitsPerChannel/8) * frames * n_ch;
 
     /* prepare interleaved audio buffer */
     buf_list.mNumberBuffers = 1;
-    buf_list.mBuffers[0].mNumberChannels = file->inner_desc.mChannelsPerFrame;
+    buf_list.mBuffers[0].mNumberChannels = n_ch;
     buf_list.mBuffers[0].mDataByteSize = (UInt32)alloc_size;
-    buf_list.mBuffers[0].mData = rb_alloc_tmp_buffer(&tmpstr, alloc_size);
-    buf = buf_list.mBuffers[0].mData;
 
-    for (i = 0; i < RARRAY_LEN(data); i++) {
-      buf[i] = (short)NUM2INT(RARRAY_PTR(data)[i]);
+    if ((rank == 1 && n_ch == 1) || rank == 2) {
+      /* no need to allocate buffer. NArray buffer can be used as mData */
+      buf_list.mBuffers[0].mData = NA_PTR_TYPE(data, void *);
+    } else {
+      UInt32 i, j;
+      short *na_buf = NA_PTR_TYPE(data, short *);
+
+      buf_list.mBuffers[0].mData = rb_alloc_tmp_buffer(&tmpstr, alloc_size);
+      buf = buf_list.mBuffers[0].mData;
+
+      for (i = 0; i < frames; i++) {
+        for (j = 0; j < n_ch; j++) {
+          buf[i*n_ch+j] = na_buf[i];
+        }
+      }
     }
 
     err = ExtAudioFileWrite(file->file, frames, &buf_list);
 
-    rb_free_tmp_buffer(&tmpstr);
+    if (tmpstr != Qundef)
+      rb_free_tmp_buffer(&tmpstr);
 
     if (err != noErr) {
       rb_raise(rb_eRuntimeError,
@@ -299,18 +322,17 @@ ca_audio_file_write(VALUE self, VALUE data)
 }
 
 static VALUE
-ca_audio_file_read(int argc, VALUE *argv, VALUE self)
+ca_audio_file_read_frames(VALUE self, VALUE frame_val)
 {
     ca_audio_file_t *file;
-    VALUE frame_val;
-    UInt32 frames, chunk, total, read_frames;
+    UInt32 channels, frames, read_frames;
     AudioBufferList buf_list;
-    short *buf;
     size_t alloc_size;
-    volatile VALUE tmpstr;
-    VALUE ary;
-    UInt32 i;
+    VALUE nary;
+    int shape[2];
     OSStatus err = noErr;
+
+    frames = NUM2UINT(frame_val);
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, file);
 
@@ -320,48 +342,34 @@ ca_audio_file_read(int argc, VALUE *argv, VALUE self)
     if (file->for_write)
       rb_raise(rb_eRuntimeError, "coreaudio: audio file open for writing");
 
-    rb_scan_args(argc, argv, "01", &frame_val);
+    channels = file->inner_desc.mChannelsPerFrame;
 
-    if (NIL_P(frame_val)) {
-      frames = 0;
-      chunk = 1024;
-    } else {
-      frames = chunk = NUM2UINT(frame_val);
-    }
+    shape[0] = channels;
+    shape[1] = frames;
+    nary = na_make_object(NA_SINT, 2, shape, cNArray);
 
-    alloc_size = (file->inner_desc.mBitsPerChannel/8) *
-      file->inner_desc.mChannelsPerFrame * chunk;
+    alloc_size = (file->inner_desc.mBitsPerChannel/8) * channels * frames;
 
     /* prepare interleaved audio buffer */
     buf_list.mNumberBuffers = 1;
-    buf_list.mBuffers[0].mNumberChannels = file->inner_desc.mChannelsPerFrame;
+    buf_list.mBuffers[0].mNumberChannels = channels;
     buf_list.mBuffers[0].mDataByteSize = (UInt32)alloc_size;
-    buf_list.mBuffers[0].mData = rb_alloc_tmp_buffer(&tmpstr, alloc_size);
-    buf = buf_list.mBuffers[0].mData;
+    buf_list.mBuffers[0].mData = NA_PTR_TYPE(nary, void *);
 
-    ary = rb_ary_new2(chunk*file->inner_desc.mChannelsPerFrame);
+    read_frames = frames;
+    err = ExtAudioFileRead(file->file, &read_frames, &buf_list);
 
-    for (total = 0; total < frames || frames == 0; total += read_frames) {
-      read_frames = chunk;
-      err = ExtAudioFileRead(file->file, &read_frames, &buf_list);
-
-      if (err != noErr) {
-        rb_free_tmp_buffer(&tmpstr);
-        rb_raise(rb_eRuntimeError,
-                 "coreaudio: ExtAudioFileRead() fails: %d", (int)err);
-      }
-
-      if (read_frames == 0)
-        break;
-
-      for (i = 0; i < read_frames * file->inner_desc.mChannelsPerFrame; i++) {
-        rb_ary_push(ary, INT2NUM((int)buf[i]));
-      }
+    if (err != noErr) {
+      rb_raise(rb_eRuntimeError,
+               "coreaudio: ExtAudioFileRead() fails: %d", (int)err);
     }
 
-    rb_free_tmp_buffer(&tmpstr);
+    if (read_frames == 0)
+      return Qnil;
 
-    return ary;
+    NA_SHAPE1(nary) = read_frames;
+
+    return nary;
 }
 
 static VALUE
@@ -424,7 +432,7 @@ Init_coreaudio_audiofile(void)
     rb_define_method(rb_cAudioFile, "initialize", ca_audio_file_initialize, -1);
     rb_define_method(rb_cAudioFile, "close", ca_audio_file_close, 0);
     rb_define_method(rb_cAudioFile, "write", ca_audio_file_write, 1);
-    rb_define_method(rb_cAudioFile, "read", ca_audio_file_read, -1);
+    rb_define_method(rb_cAudioFile, "read_frames", ca_audio_file_read_frames, 1);
     rb_define_method(rb_cAudioFile, "rate", ca_audio_file_rate, 0);
     rb_define_method(rb_cAudioFile, "channel", ca_audio_file_channel, 0);
     rb_define_method(rb_cAudioFile, "inner_rate", ca_audio_file_inner_rate, 0);

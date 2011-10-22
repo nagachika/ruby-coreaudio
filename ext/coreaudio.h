@@ -3,6 +3,7 @@
 
 #include <ruby.h>
 
+#include "narray.h"
 #include "extconf.h"
 
 extern VALUE rb_mCoreAudio;

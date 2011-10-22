@@ -820,19 +820,37 @@ ca_device_create_out_buffer_proc(VALUE self, VALUE frame)
 }
 
 static VALUE
-ca_out_buffer_data_append(VALUE self, VALUE ary)
+ca_out_buffer_data_append(VALUE self, VALUE nary)
 {
     ca_buffer_data *data;
+    int rank;
+    short *buf;
+    UInt32 frames;
     UInt32 idx;
-    VALUE val;
     long i;
     UInt32 j;
 
     TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
 
+    nary = na_cast_object(nary, NA_SINT);
+    rank = NA_RANK(nary);
+    if (rank == 1) {
+      frames = NA_SHAPE0(nary);
+    } else if (rank == 2) {
+      frames = NA_SHAPE1(nary);
+      if (NA_SHAPE0(nary) != (int)data->channel)
+        rb_raise(rb_eArgError,
+                 "coreaudio: audio buffer NArray size of first dim. must be "
+                 "number of channels");
+    } else {
+      rb_raise(rb_eArgError,
+               "coreaudio: audio buffer NArray rank must be 1 or 2");
+    }
+    buf = NA_PTR_TYPE(nary, short *);
+
     pthread_mutex_lock(&data->mutex);
     idx = data->end;
-    for ( i = 0; i < RARRAY_LEN(ary); i++, idx = (idx+1)%data->frame) {
+    for ( i = 0; i < frames; i++, idx = (idx+1)%data->frame) {
       while ( (idx+1) % data->frame == data->start ) {
         int ret, state;
         data->end = idx;
@@ -852,19 +870,14 @@ ca_out_buffer_data_append(VALUE self, VALUE ary)
             break;
         }
       }
-      val = RARRAY_PTR(ary)[i];
 
-      if (TYPE(val) == T_ARRAY) {
-        if (RARRAY_LEN(val) != data->channel) {
-          pthread_mutex_unlock(&data->mutex);
-          rb_raise(rb_eArgError, "size of array and channel size mismatch");
-        }
-        for (j = 0; j < data->channel; j++) {
-          data->buf[idx*data->channel+j] = (short)NUM2INT(RARRAY_PTR(val)[j]);
-        }
+      if (rank == 2) {
+        memcpy(data->buf + idx * data->channel,
+               buf + i * data->channel,
+               sizeof(short) * data->channel);
       } else {
         for (j = 0; j < data->channel; j++) {
-          data->buf[idx*data->channel+j] = (short)NUM2INT(val);
+          data->buf[idx*data->channel+j] = buf[i];
         }
       }
       data->end = idx;
@@ -961,13 +974,17 @@ ca_in_buffer_data_read(VALUE self, VALUE num)
 {
     ca_buffer_data *data;
     UInt32 frame = NUM2UINT(num);
-    VALUE val;
+    VALUE nary;
+    int shape[2];
+    short *buf;
     UInt32 i;
-    UInt32 j;
 
     TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
 
-    val = rb_ary_new2(frame * data->channel);
+    shape[0] = data->channel;
+    shape[1] = frame;
+    nary = na_make_object(NA_SINT, 2, shape, cNArray);
+    buf = NA_PTR_TYPE(nary, short *);
 
     pthread_mutex_lock(&data->mutex);
     for ( i = 0; i < frame; i++, data->start = (data->start+1)%data->frame) {
@@ -989,12 +1006,11 @@ ca_in_buffer_data_read(VALUE self, VALUE num)
             break;
         }
       }
-      for ( j = 0; j < data->channel; j++ ) {
-        rb_ary_push(val, INT2NUM((double)data->buf[data->start*data->channel+j]));
-      }
+      memcpy(buf + i * data->channel, data->buf + data->start*data->channel,
+             sizeof(short) * data->channel);
     }
     pthread_mutex_unlock(&data->mutex);
-    return val;
+    return nary;
 }
 
 void

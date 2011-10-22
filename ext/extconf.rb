@@ -17,7 +17,33 @@ unless defined?(have_framework)
   end
 end
 
-dir_config("coreaudio")
+begin
+  files = Gem.find_files("narray.h")
+  if files.empty?
+    narray_dir = $sitearchdir
+  else
+    narray_dir = File.dirname(files.first)
+  end
+rescue
+  narray_dir = $sitearchdir
+end
+dir_config("narray", narray_dir, narray_dir)
+
+if not(have_header("narray.h") and have_header("narray_config.h"))
+  print <<-EOS
+** configure error **
+narray.h or narray_config.h is not found.
+If you have installed narray to /path/to/narray, try the following:
+
+ % ruby extconf.rb --with-narray-dir=/path/to/narray
+
+or
+ % gem install coreaudio -- --with-narray-dir=/path/to/narray
+
+  EOS
+  exit false
+end
+
 if have_framework("CoreAudio") and
    have_framework("AudioToolBox") and
    have_framework("CoreFoundation") and
