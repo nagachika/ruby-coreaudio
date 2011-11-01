@@ -134,6 +134,7 @@ ca_get_device_name(AudioDeviceID devID)
     UInt32 size;
     OSStatus status;
     CFStringRef deviceName = NULL;
+    char cbuf[256];
     VALUE str;
 
     address.mSelector = kAudioObjectPropertyName;
@@ -143,8 +144,13 @@ ca_get_device_name(AudioDeviceID devID)
     if ( status != noErr ) {
       rb_raise(rb_eArgError, "coreaudio: get device name failed: %d", status);
     }
-    str = rb_str_new2(CFStringGetCStringPtr(deviceName, kCFStringEncodingASCII));
+    if (!CFStringGetCString(deviceName, cbuf, (CFIndex)sizeof(cbuf),
+                            kCFStringEncodingUTF8)) {
+      /* String conversion failed. Ignore an error and return empty String */
+      cbuf[0] = '\0';
+    }
     CFRelease(deviceName);
+    str = rb_str_new2(cbuf);
 
     return str;
 }
