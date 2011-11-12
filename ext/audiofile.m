@@ -146,7 +146,7 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
 
     TypedData_Get_Struct(self, ca_audio_file_t, &ca_audio_file_type, data);
 
-    rb_scan_args(argc, argv, "11:", &path, &mode, &opt);
+    rb_scan_args(argc, argv, "12", &path, &mode, &opt);
 
     /* check mode */
     if (NIL_P(mode) || mode == sym_read)
