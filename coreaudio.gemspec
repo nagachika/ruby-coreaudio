@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = "coreaudio"
-  s.version = "0.0.5"
+  s.version = "0.0.6"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["CHIKANAGA Tomoyuki"]
-  s.date = "2011-11-01"
+  s.date = "2011-11-12"
   s.description = "Mac OS X CoreAudio wrapper library"
   s.email = "nagachika00@gmail.com"
   s.extensions = ["ext/extconf.rb"]
