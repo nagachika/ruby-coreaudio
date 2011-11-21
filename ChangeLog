@@ -1,0 +1,32 @@
+Sat Nov 12 18:23:10 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.6
+	* change usage of rb_scan_args() in AudioFile.new. support ruby 1.9.2.
+
+Tue Nov 1 22:01:39 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.5
+	* fix an error in get name of audio device on some environment.
+	  (use CFStringGetCString() instead of CFStringGetCStringPtr())
+
+Sat Oct 29 00:55:11 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.4
+	* use NArray for audio data.
+	* rename AudioFile.new option keyword(:channel -> :channels)
+	* add some examples.
+
+Mon Oct 17 01:19:36 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.2
+	* add CoreAudio::AudioFile, ability to read/write audio file.
+
+Mon Oct 10 23:01:23 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.2
+	* fix build error with 1.9.2
+
+Sat Oct 8 02:52:38 2011 CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.1
+	* initial release
