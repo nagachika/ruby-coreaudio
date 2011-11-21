@@ -1,3 +1,8 @@
+Tue Nov 22 00:09:30 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* ext/audiofile.m(ca_audio_file_initialize): convert first argument
+	  to String if necessary.
+
 Sat Nov 12 18:23:10 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
 
 	* release 0.0.6

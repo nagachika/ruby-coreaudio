@@ -148,6 +148,8 @@ ca_audio_file_initialize(int argc, VALUE *argv, VALUE self)
 
     rb_scan_args(argc, argv, "12", &path, &mode, &opt);
 
+    StringValue(path);
+
     /* check mode */
     if (NIL_P(mode) || mode == sym_read)
       data->for_write = FALSE;
