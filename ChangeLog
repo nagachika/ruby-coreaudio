@@ -1,3 +1,7 @@
+Fri Nov 25 01:03:49 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* examples/fft_shift_pitch.rb: ignore first element of fft result.
+
 Tue Nov 22 00:09:30 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
 
 	* ext/audiofile.m(ca_audio_file_initialize): convert first argument

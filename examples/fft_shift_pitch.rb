@@ -15,9 +15,9 @@ pitch_shift_th = Thread.start do
     f = FFTW3.fft(w, 1)
     shift = 12
     f.shape[0].times do |ch|
-      f[ch, shift...half] = f[ch, 0...(half-shift)]
-      f[ch, 0...shift] = 0
-      f[ch, half...(w.shape[1]-shift)] = f[ch, (half+shift)..-1]
+      f[ch, (shift+1)...half] = f[ch, 1...(half-shift)]
+      f[ch, 1..shift] = 0
+      f[ch, (half+1)...(w.shape[1]-shift)] = f[ch, (half+shift+1)..-1]
       f[ch, -shift..-1] = 0
     end
     outbuf << FFTW3.ifft(f, 1) / w.shape[1]
