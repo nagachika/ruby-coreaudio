@@ -45,7 +45,7 @@ or
 end
 
 if have_framework("CoreAudio") and
-   have_framework("AudioToolBox") and
+   have_framework("AudioToolbox") and
    have_framework("CoreFoundation") and
    have_framework("Cocoa")
 
