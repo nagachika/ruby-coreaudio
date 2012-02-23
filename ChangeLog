@@ -1,4 +1,11 @@
+Fri Feb 24 01:06:20 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.8
+	  0.0.7 has invalid dependency.
+
 Fri Feb 24 00:47:07 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* release 0.0.7
 
 	* ext/coreaudio.m (ca_out_buffer_data_append): fix last 1 frame
 	  is overwritten by next buffer's first frame. fixes issue #7.
