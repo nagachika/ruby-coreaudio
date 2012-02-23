@@ -1,6 +1,8 @@
 ext/Makefile
 ext/extconf.h
 
+/Gemfile.lock
+
 # rcov generated
 coverage
 
