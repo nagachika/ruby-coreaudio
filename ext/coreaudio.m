@@ -853,13 +853,12 @@ ca_out_buffer_data_append(VALUE self, VALUE nary)
                "coreaudio: audio buffer NArray rank must be 1 or 2");
     }
     buf = NA_PTR_TYPE(nary, short *);
-
     pthread_mutex_lock(&data->mutex);
-    idx = data->end;
+    idx = (data->end + 1) % data->frame;
     for ( i = 0; i < frames; i++, idx = (idx+1)%data->frame) {
-      while ( (idx+1) % data->frame == data->start ) {
+      while ( idx == data->start ) {
         int ret, state;
-        data->end = idx;
+        data->end = (idx == 0) ? data->frame-1 : idx - 1;
         ret = (int)rb_protect(ca_buffer_wait_blocking, (VALUE)data, &state);
         if (state) {
           pthread_mutex_unlock(&data->mutex);

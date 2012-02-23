@@ -1,3 +1,16 @@
+Fri Feb 24 00:47:07 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* ext/coreaudio.m (ca_out_buffer_data_append): fix last 1 frame
+	  is overwritten by next buffer's first frame. fixes issue #7.
+	  reported by dturnbull. Thank you!
+
+Fri Feb 23 23:24:00 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* Gemfile: use 'gemspec'
+	* Gemfile.lock: delete from reository
+	* .gitignore: add Gemfile.lock for ignore list
+	* coreaudio.gemspec: udpate dependent version of jeweler
+
 Fri Nov 25 01:03:49 2011  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
 
 	* examples/fft_shift_pitch.rb: ignore first element of fft result.
