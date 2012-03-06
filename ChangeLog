@@ -1,3 +1,10 @@
+Tue Mar  6 12:39:59 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* coreaudio.gemspec: fix dependency. narray should runtime dependency.
+
+	* ext/coreaudio.m (ca_buffer_space): add AudioBuffer#space.
+	  it tells space of ring buffer in frame number.
+
 Tue Mar  6 12:13:01 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
 
 	* coreaudio.gemspec: Version bump to 0.0.9.

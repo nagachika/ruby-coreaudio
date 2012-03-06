@@ -713,6 +713,34 @@ ca_buffer_wait_blocking(VALUE value)
                                      RUBY_UBF_IO, NULL);
 }
 
+static size_t
+buffer_space(ca_buffer_data *data)
+{
+    UInt32 nxt;
+    size_t space;
+
+    pthread_mutex_lock(&data->mutex);
+    nxt = (data->end+1) % data->frame;
+    if ( nxt <= data->start )
+      space = (size_t)(data->start - nxt);
+    else
+      space = (size_t)(data->start + data->frame - nxt);
+    pthread_mutex_unlock(&data->mutex);
+    return space;
+}
+
+static VALUE
+ca_buffer_space(VALUE self)
+{
+    ca_buffer_data *data;
+    size_t space;
+
+    TypedData_Get_Struct(self, ca_buffer_data, &ca_buffer_data_type, data);
+
+    space = buffer_space(data);
+    return SIZET2NUM(space);
+}
+
 static VALUE
 ca_buffer_dropped_frame(VALUE self)
 {
@@ -1066,6 +1094,7 @@ Init_coreaudio_ext(void)
     rb_define_method(rb_cAudioBuffer, "stop", ca_buffer_data_stop, 0);
     rb_define_method(rb_cAudioBuffer, "dropped_frame", ca_buffer_dropped_frame, 0);
     rb_define_method(rb_cAudioBuffer, "reset_dropped_frame", ca_buffer_reset_dropped_frame, 0);
+    rb_define_method(rb_cAudioBuffer, "space",  ca_buffer_space, 0);
 
     rb_define_method(rb_cOutputBuffer, "<<", ca_out_buffer_data_append, 1);
 
