@@ -1,7 +1,11 @@
 ext/Makefile
 ext/extconf.h
 
+*.gem
 /Gemfile.lock
+
+tmp/
+pkg/
 
 # rcov generated
 coverage
@@ -10,14 +14,12 @@ coverage
 rdoc
 
 # yard generated
-doc
+doc/
 .yardoc
 
 # bundler
 .bundle
-
-# jeweler generated
-pkg
+lib/bundler/man
 
 # Have editor/IDE/OS specific files you need to ignore? Consider using a global gitignore: 
 #
@@ -49,5 +51,3 @@ pkg
 # For redcar:
 #.redcar
 
-# For rubinius:
-#*.rbc

@@ -1,3 +1,7 @@
+Sat Mar 10 19:16:03 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
+
+	* change gem generate tool from jeweler to Bundler.
+
 Tue Mar  6 12:39:59 2012  CHIKANAGA Tomoyuki  <nagachika00@gmail.com>
 
 	* coreaudio.gemspec: fix dependency. narray should runtime dependency.
