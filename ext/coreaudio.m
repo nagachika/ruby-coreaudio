@@ -195,6 +195,29 @@ ca_get_device_available_sample_rate(AudioDeviceID devID)
 }
 
 static VALUE
+ca_set_device_nominal_sample_rate(AudioDeviceID devID, VALUE sampleRateVal)
+{
+    AudioObjectPropertyAddress address = PropertyAddress;
+    UInt32 size;
+    OSStatus status;
+    Float64 rate = NUM2DBL(sampleRateVal);
+
+    address.mSelector = kAudioDevicePropertyNominalSampleRate;
+    status = AudioObjectGetPropertyDataSize(devID, &address, 0, NULL, &size);
+
+    if (status != noErr) {
+      rb_raise(rb_eArgError,
+               "coreaudio: get nominal sample rates size failed: %d", status);
+    }
+    status = AudioObjectSetPropertyData(devID, &address, 0, NULL, size, &rate);
+    if (status != noErr) {
+      rb_raise(rb_eArgError,
+               "coreaudio: set nominal sample rates failed: %d", status);
+    }
+    return sampleRateVal;
+}
+
+static VALUE
 ca_get_device_nominal_sample_rate(AudioDeviceID devID)
 {
     AudioObjectPropertyAddress address = PropertyAddress;
@@ -240,18 +263,28 @@ ca_get_device_actual_sample_rate(VALUE self)
 }
 
 static VALUE
-ca_device_initialize(VALUE self, VALUE devIdVal)
+ca_device_initialize(VALUE self, VALUE devIdVal, VALUE options)
 {
     AudioDeviceID devID = (AudioDeviceID)NUM2LONG(devIdVal);
     VALUE device_name;
     VALUE available_sample_rate;
     VALUE nominal_rate;
     VALUE input_stream, output_stream;
+    VALUE option_nominal_rate;
 
     device_name = ca_get_device_name(devID);
     available_sample_rate = ca_get_device_available_sample_rate(devID);
     rb_obj_freeze(available_sample_rate);
-    nominal_rate = ca_get_device_nominal_sample_rate(devID);
+
+    if (options != Qnil) {
+      option_nominal_rate = rb_funcall(options, rb_intern("[]"), 1, ID2SYM(rb_intern("nominal_rate")));
+      if (option_nominal_rate != Qnil) {
+        nominal_rate = ca_set_device_nominal_sample_rate(devID, option_nominal_rate);
+      }
+    } else {
+      nominal_rate = ca_get_device_nominal_sample_rate(devID);
+    }
+
     input_stream = ca_stream_new(devIdVal, Qtrue);
     output_stream = ca_stream_new(devIdVal, Qfalse);
 
@@ -266,13 +299,13 @@ ca_device_initialize(VALUE self, VALUE devIdVal)
 }
 
 static VALUE
-ca_device_new(AudioDeviceID devid)
+ca_device_new(AudioDeviceID devid, VALUE options)
 {
     VALUE devIdVal = UINT2NUM(devid);
     VALUE device;
 
     device = rb_obj_alloc(rb_cAudioDevice);
-    ca_device_initialize(device, devIdVal);
+    ca_device_initialize(device, devIdVal, options);
 
     return device;
 }
@@ -280,12 +313,13 @@ ca_device_new(AudioDeviceID devid)
 /*
  * Document-method: CoreAudio.devices
  * call-seq:
- *   CoreAudio.devices
+ *   CoreAudio.devices(options = nil)
  *
  * Get available all audio devices (CoreAudio::AudioDevice object).
+ * if options[:nominal_rate] is given, set device nominal rate as given one.
  */
 static VALUE
-ca_devices(VALUE mod)
+ca_devices(int argc, VALUE *argv, VALUE mod)
 {
     AudioObjectPropertyAddress address = PropertyAddress;
     AudioDeviceID *devIDs = NULL;
@@ -293,6 +327,9 @@ ca_devices(VALUE mod)
     OSStatus status = noErr;
     VALUE ary;
     UInt32 i;
+    VALUE options;
+
+    rb_scan_args(argc, argv, "01", &options);
 
     address.mSelector = kAudioHardwarePropertyDevices;
 
@@ -311,7 +348,7 @@ ca_devices(VALUE mod)
 
     ary = rb_ary_new();
     for (i = 0; i < devnum; i++) {
-      rb_ary_push(ary, ca_device_new(devIDs[i]));
+      rb_ary_push(ary, ca_device_new(devIDs[i], options));
     }
     return ary;
 }
@@ -319,17 +356,21 @@ ca_devices(VALUE mod)
 /*
  * Document-method: CoreAudio.default_input_device
  * call-seq:
- *   CoreAudio.default_input_device
+ *   CoreAudio.default_input_device(options = nil)
  *
  * Get system default audio input device as CoreAudio::AudioDevice object.
+ * if options[:nominal_rate] is given, set device nominal rate as given one.
  */
 static VALUE
-ca_default_input_device(VALUE mod)
+ca_default_input_device(int argc, VALUE *argv, VALUE mod)
 {
     AudioDeviceID devID;
     AudioObjectPropertyAddress address = PropertyAddress;
     UInt32 size;
     OSStatus status;
+    VALUE options;
+
+    rb_scan_args(argc, argv, "01", &options);
 
     address.mSelector = kAudioHardwarePropertyDefaultInputDevice;
     size = sizeof(devID);
@@ -340,24 +381,28 @@ ca_default_input_device(VALUE mod)
     if (status != noErr)
       rb_raise(rb_eArgError, "coreaudio: get default input device failed: %d", status);
 
-    return ca_device_new(devID);
+    return ca_device_new(devID, options);
 }
 
 
 /*
  * Document-method: CoreAudio.default_output_device
  * call-seq:
- *   CoreAudio.default_output_device
+ *   CoreAudio.default_output_device(options = nil)
  *
  * Get system default audio output device as CoreAudio::AudioDevice object.
+ * if options[:nominal_rate] is given, set device nominal rate as given one.
  */
 static VALUE
-ca_default_output_device(VALUE mod)
+ca_default_output_device(int argc, VALUE *argv, VALUE mod)
 {
     AudioDeviceID devID;
     AudioObjectPropertyAddress address = PropertyAddress;
     UInt32 size;
     OSStatus status;
+    VALUE options;
+
+    rb_scan_args(argc, argv, "01", &options);
 
     address.mSelector = kAudioHardwarePropertyDefaultOutputDevice;
     size = sizeof(devID);
@@ -368,7 +413,7 @@ ca_default_output_device(VALUE mod)
     if (status != noErr)
       rb_raise(rb_eArgError, "coreaudio: get default output device failed: %d", status);
 
-    return ca_device_new(devID);
+    return ca_device_new(devID, options);
 }
 
 /*
@@ -1082,9 +1127,9 @@ Init_coreaudio_ext(void)
     rb_define_attr(rb_cAudioStream, "channels", 1, 0);
     rb_define_attr(rb_cAudioStream, "buffer_frame_size", 1, 0);
 
-    rb_define_singleton_method(rb_mCoreAudio, "devices", ca_devices, 0);
-    rb_define_singleton_method(rb_mCoreAudio, "default_input_device", ca_default_input_device, 0);
-    rb_define_singleton_method(rb_mCoreAudio, "default_output_device", ca_default_output_device, 0);
+    rb_define_singleton_method(rb_mCoreAudio, "devices", ca_devices, -1);
+    rb_define_singleton_method(rb_mCoreAudio, "default_input_device", ca_default_input_device, -1);
+    rb_define_singleton_method(rb_mCoreAudio, "default_output_device", ca_default_output_device, -1);
 
     rb_define_method(rb_cOutLoop, "[]=", ca_out_loop_data_assign, 2);
     rb_define_method(rb_cOutLoop, "start", ca_out_loop_data_start, 0);
