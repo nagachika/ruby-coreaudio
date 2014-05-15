@@ -30,22 +30,19 @@ Gem::Specification.new do |gem|
 
     if Gem::Version.new(Gem::VERSION) >= Gem::Version.new('1.2.0') then
       gem.add_runtime_dependency(%q<narray>, ["~> 0.6.0.0"])
-      gem.add_development_dependency(%q<bundler>, ["~> 1.0.0"])
-      gem.add_development_dependency(%q<jeweler>, ["~> 1.8.0"])
-      gem.add_development_dependency(%q<rake>, ["~> 0.9.2"])
+      gem.add_development_dependency(%q<bundler>, [">= 0"])
+      gem.add_development_dependency(%q<rake>, [">= 0"])
       gem.add_development_dependency(%q<rdoc>, [">= 0"])
     else
       gem.add_dependency(%q<narray>, ["~> 0.6.0.0"])
-      gem.add_dependency(%q<bundler>, ["~> 1.0.0"])
-      gem.add_dependency(%q<jeweler>, ["~> 1.8.0"])
-      gem.add_dependency(%q<rake>, ["~> 0.9.2"])
+      gem.add_dependency(%q<bundler>, [">= 0"])
+      gem.add_dependency(%q<rake>, [">= 0"])
       gem.add_dependency(%q<rdoc>, [">= 0"])
     end
   else
     gem.add_dependency(%q<narray>, ["~> 0.6.0.0"])
-    gem.add_dependency(%q<bundler>, ["~> 1.0.0"])
-    gem.add_dependency(%q<jeweler>, ["~> 1.8.0"])
-    gem.add_dependency(%q<rake>, ["~> 0.9.2"])
+    gem.add_dependency(%q<bundler>, [">= 0"])
+    gem.add_dependency(%q<rake>, [">= 0"])
     gem.add_dependency(%q<rdoc>, [">= 0"])
   end
 end
