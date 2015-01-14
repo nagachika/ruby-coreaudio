@@ -1,3 +1,8 @@
+Wed Jan 14 13:55:46 2015  CHIKANAGA Tomoyuki  <nagachika@ruby-lang.org>
+
+	* examples/set_def_out_sample_rate.rb: add example for set output
+	  device sampling rate. patched by @xavriley
+
 Thu May 15 20:05:15 2014  CHIKANAGA Tomoyuki  <nagachika@ruby-lang.org>
 
 	* release 0.0.10
