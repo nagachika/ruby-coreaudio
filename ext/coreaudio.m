@@ -779,11 +779,11 @@ ca_buffer_wait_blocking(VALUE value)
 {
     void *ptr = (void *)value;
 #if 0
-    return rb_thread_blocking_region(ca_buffer_wait, ptr,
-                                     ca_buffer_unblocking_func, ptr);
+    return rb_thread_call_without_gvl(ca_buffer_wait, ptr,
+                                      ca_buffer_unblocking_func, ptr);
 #endif
-    return rb_thread_blocking_region(ca_buffer_wait, ptr,
-                                     RUBY_UBF_IO, NULL);
+    return rb_thread_call_without_gvl(ca_buffer_wait, ptr,
+                                      RUBY_UBF_IO, NULL);
 }
 
 static size_t
