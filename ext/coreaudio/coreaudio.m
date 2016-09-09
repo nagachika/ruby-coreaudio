@@ -1139,7 +1139,7 @@ Init_coreaudio_ext(void)
     rb_cOutputBuffer = rb_define_class_under(rb_mCoreAudio, "OutputBuffer", rb_cAudioBuffer);
     rb_cInputBuffer = rb_define_class_under(rb_mCoreAudio, "InputBuffer", rb_cAudioBuffer);
 
-    rb_define_method(rb_cAudioDevice, "initialize", ca_device_initialize, 1);
+    rb_define_method(rb_cAudioDevice, "initialize", ca_device_initialize, 2);
     rb_define_method(rb_cAudioDevice, "actual_rate", ca_get_device_actual_sample_rate, 0);
     rb_define_method(rb_cAudioDevice, "output_loop", ca_device_create_out_loop_proc, 1);
     rb_define_method(rb_cAudioDevice, "output_buffer", ca_device_create_out_buffer_proc, 1);
